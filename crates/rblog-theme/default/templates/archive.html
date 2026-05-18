@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Archive — {{ site.title | default('rblog') }}{% endblock %}
+{% block body %}
+  <section class="archive">
+    <h1>Archive</h1>
+    <ul class="archive-list">
+      {% for post in posts %}
+        <li><time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time> · <a href="{{ post.permalink }}">{{ post.title }}</a></li>
+      {% endfor %}
+    </ul>
+    {% include '_pagination.html' %}
+  </section>
+{% endblock %}

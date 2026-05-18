@@ -1,0 +1,32 @@
+[package]
+name = "rblog"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "rblog server — Rust port of Halo CMS."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rblog"
+path = "src/main.rs"
+
+[dependencies]
+rblog-attachments.workspace = true
+rblog-auth.workspace = true
+rblog-content.workspace = true
+rblog-core.workspace = true
+rblog-http.workspace = true
+rblog-plugins.workspace = true
+rblog-scheme.workspace = true
+rblog-search.workspace = true
+rblog-store.workspace = true
+rblog-theme.workspace = true
+
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

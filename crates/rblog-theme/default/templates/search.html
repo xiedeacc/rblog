@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Search "{{ query }}" · {{ site.title | default('rblog') }}{% endblock %}
+
+{% block body %}
+  <section class="page-search">
+    <h1>Search results</h1>
+    <form class="page-search-form" action="/search" method="get" role="search">
+      <input type="search" name="q" value="{{ query | default('') }}" placeholder="Search posts…" autofocus />
+      <button type="submit">Go</button>
+    </form>
+
+    {% if query %}
+      <p class="search-meta">Found <strong>{{ total | default(0) }}</strong> result{% if total != 1 %}s{% endif %} for &ldquo;{{ query }}&rdquo;.</p>
+    {% endif %}
+
+    {% if hits and hits | length > 0 %}
+      <ul class="search-hits">
+        {% for hit in hits %}
+          <li class="search-hit">
+            <h2 class="search-hit__title"><a href="{{ hit.permalink }}">{{ hit.title }}</a></h2>
+            {% if hit.excerpt %}<p class="search-hit__excerpt">{{ hit.excerpt }}</p>{% endif %}
+            <p class="search-hit__meta">
+              {% if hit.publish_time %}
+                <time datetime="{{ hit.publish_time }}">{{ hit.publish_time | date('%Y-%m-%d') }}</time>
+              {% endif %}
+              {% if hit.tags and hit.tags | length > 0 %}
+                <span class="search-hit__tags">
+                  {% for tag in hit.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
+                </span>
+              {% endif %}
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% elif query %}
+      <p class="search-empty">No matching posts. Try a broader query.</p>
+    {% endif %}
+  </section>
+{% endblock %}

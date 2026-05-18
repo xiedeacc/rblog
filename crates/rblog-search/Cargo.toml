@@ -1,0 +1,22 @@
+[package]
+name = "rblog-search"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Tantivy-backed full-text search index for posts."
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+parking_lot = "0.12"
+serde.workspace = true
+tantivy = "0.22"
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

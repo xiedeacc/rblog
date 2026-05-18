@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Not Found — {{ site.title | default('rblog') }}{% endblock %}
+{% block body %}
+  <section class="not-found">
+    <h1>Not Found</h1>
+    <p>The page you were looking for doesn't exist.</p>
+    <p><a href="/">Back to home</a></p>
+  </section>
+{% endblock %}

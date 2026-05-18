@@ -1,0 +1,39 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Local config / secrets
+/rblog.local.toml
+.env
+.env.local
+
+# Local data
+/work/
+/data/
+/uploads/
+/search-index/
+/plugins/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Frontend
+admin/node_modules/
+admin/.vite/
+# Vite build artifacts. The only file we track in `admin/dist/` is
+# `index.html` (a placeholder), so the `embed-admin` Cargo feature always
+# has at least one file to embed against. Real builds overwrite it.
+admin/dist/assets/
+
+# Logs
+*.log
+/logs/

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>rblog admin</title>
+    <link rel="stylesheet" href="/admin/assets/placeholder.css" />
+  </head>
+  <body>
+    <main class="placeholder">
+      <h1>rblog admin SPA</h1>
+      <p>
+        The rblog binary was built without the <code>embed-admin</code>
+        feature and no <code>paths.admin_dist</code> is configured. The
+        REST API at <a href="/api/admin/openapi.json">/api/admin/openapi.json</a>
+        still works.
+      </p>
+      <p>
+        To use the React admin UI:
+      </p>
+      <ol>
+        <li>
+          Build the SPA: <code>cd admin &amp;&amp; pnpm install &amp;&amp; pnpm build</code>
+        </li>
+        <li>
+          Either:
+          <ul>
+            <li>
+              Rebuild rblog with
+              <code>cargo build --release --features rblog-http/embed-admin</code>, or
+            </li>
+            <li>
+              Set <code>paths.admin_dist = "./admin/dist"</code> in
+              <code>rblog.toml</code> and restart.
+            </li>
+          </ul>
+        </li>
+      </ol>
+    </main>
+  </body>
+</html>

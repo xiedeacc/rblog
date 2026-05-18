@@ -1,0 +1,30 @@
+[package]
+name = "rblog-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Domain services on top of rblog-store/scheme/index/content: posts, snapshots, taxonomy, comments, users, system bootstrap."
+
+[lints]
+workspace = true
+
+[dependencies]
+rblog-auth.workspace = true
+rblog-content.workspace = true
+rblog-index.workspace = true
+rblog-scheme.workspace = true
+rblog-store.workspace = true
+
+ammonia = "4"
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+pretty_assertions = "1"

@@ -1,0 +1,60 @@
+###############################################################################
+# rblog — docker-compose for local development against MySQL.
+#
+# Usage:
+#   docker compose up --build
+#   docker compose down -v   # wipe MySQL state
+#
+# The compose file deliberately mirrors `Dockerfile` defaults so the image
+# can also be run standalone with SQLite (see the README quickstart).
+###############################################################################
+version: "3.9"
+
+services:
+  rblog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rblog:dev
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      RBLOG__SERVER__BIND: "0.0.0.0:8080"
+      RBLOG__DATABASE__URL: "mysql://rblog:rblog@mysql:3306/rblog"
+      RBLOG__PATHS__THEMES_ROOT: "/var/lib/rblog/themes"
+      RBLOG__PATHS__UPLOADS_ROOT: "/var/lib/rblog/uploads"
+      RBLOG__PATHS__SEARCH_ROOT: "/var/lib/rblog/search-index"
+      RBLOG__PATHS__PLUGINS_ROOT: "/var/lib/rblog/plugins"
+      RUST_LOG: "info,sqlx=warn"
+    ports:
+      - "8080:8080"
+    volumes:
+      - rblog_data:/var/lib/rblog
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    command:
+      - --default-authentication-plugin=caching_sha2_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_DATABASE: "rblog"
+      MYSQL_USER: "rblog"
+      MYSQL_PASSWORD: "rblog"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  rblog_data:
+  mysql_data:

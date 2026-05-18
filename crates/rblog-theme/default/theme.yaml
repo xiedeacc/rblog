@@ -1,0 +1,9 @@
+name: default
+spec:
+  displayName: rblog default
+  author:
+    name: rblog
+    website: https://github.com/xiedeacc/rblog
+  description: Minimal default theme for rblog.
+  version: 0.1.0
+  requires: '*'

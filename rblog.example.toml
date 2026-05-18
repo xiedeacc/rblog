@@ -1,0 +1,52 @@
+# Sample configuration. Copy to `rblog.toml` to enable.
+#
+# Every value is optional; defaults match this file. Environment
+# variables override the file (prefix `RBLOG__`, double underscore =
+# section nesting, e.g. `RBLOG__SERVER__BIND=0.0.0.0:80`).
+
+[server]
+bind = "127.0.0.1:8080"
+max_body_mb = 16
+request_timeout_seconds = 30
+
+[database]
+# `sqlite:./rblog.db` for on-disk SQLite,
+# `mysql://user:pass@host:3306/rblog` for MySQL.
+url = "sqlite::memory:"
+
+[paths]
+themes_root = "./themes"
+uploads_root = "./uploads"
+# Persistent tantivy index. Wiped + re-seeded from the store on first boot.
+search_root = "./search-index"
+# WASM plugin discovery root. Each subdirectory must contain a plugin.toml
+# manifest plus a plugin.wasm component.
+plugins_root = "./plugins"
+
+[session]
+cookie_name = "rblog_session"
+# set to `true` behind HTTPS so the cookie is not sent on plain HTTP.
+secure = false
+max_age_days = 14
+
+[site]
+# Optional. The bootstrap step writes one into the `system` ConfigMap;
+# this file is the override if you don't want to use the admin UI.
+# base_url = "https://blog.example.com"
+
+# Attachment storage. The local backend serves uploaded files at the
+# configured `public_prefix` via tower_http::ServeDir. Switch to S3 by
+# setting `backend = "s3"` and filling out the bucket + credentials.
+[storage]
+backend = "local"
+public_prefix = "/uploads"
+
+# Example S3 configuration (uncomment + adapt):
+# [storage]
+# backend = "s3"
+# bucket = "my-blog-bucket"
+# region = "us-east-1"
+# # endpoint = "https://s3.example.net"  # for MinIO / R2 / etc.
+# access_key = "AKIA..."
+# secret_key = "..."
+# public_base_url = "https://my-blog-bucket.s3.amazonaws.com"

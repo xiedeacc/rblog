@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}{{ category.display_name }} — {{ site.title | default('rblog') }}{% endblock %}
+{% block body %}
+  <section class="taxonomy">
+    <h1>{{ category.display_name }}</h1>
+    {% if category.description %}<p class="cat-description">{{ category.description }}</p>{% endif %}
+    {% for post in posts %}
+      {% include '_post_card.html' %}
+    {% else %}
+      <p class="empty">No posts in this category yet.</p>
+    {% endfor %}
+    {% include '_pagination.html' %}
+  </section>
+{% endblock %}

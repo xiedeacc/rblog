@@ -1,0 +1,30 @@
+[package]
+name = "rblog-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Authentication and Halo-compatible RBAC primitives: argon2id password hashing, opaque session tokens, role/binding access checker."
+
+[lints]
+workspace = true
+
+[dependencies]
+rblog-content.workspace = true
+rblog-scheme.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+argon2 = { version = "0.5", features = ["std", "password-hash"] }
+password-hash = { version = "0.5", features = ["std"] }
+rand_core = { version = "0.6", features = ["std"] }
+base64 = "0.22"
+bcrypt = "0.19.1"
+
+[dev-dependencies]
+pretty_assertions = "1"

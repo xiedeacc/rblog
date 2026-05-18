@@ -1,0 +1,103 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rblog",
+    "crates/rblog-attachments",
+    "crates/rblog-auth",
+    "crates/rblog-plugins",
+    "crates/rblog-search",
+    "crates/rblog-content",
+    "crates/rblog-core",
+    "crates/rblog-http",
+    "crates/rblog-index",
+    "crates/rblog-scheme",
+    "crates/rblog-store",
+    "crates/rblog-theme",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors = ["rblog contributors"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/rblog/rblog"
+homepage = "https://github.com/rblog/rblog"
+description = "A Rust port of Halo CMS — single binary, MySQL/SQLite, Halo-compatible storage."
+keywords = ["blog", "cms", "axum", "halo"]
+categories = ["web-programming::http-server"]
+
+[workspace.dependencies]
+# async + http
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "sync", "fs", "signal", "time"] }
+
+# data + serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# errors + utils
+thiserror = "1"
+anyhow = "1"
+
+# logging
+tracing = "0.1"
+
+# database
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "macros",
+    "migrate",
+    "chrono",
+    "json",
+    "mysql",
+    "sqlite",
+] }
+
+# internal crates
+rblog-attachments = { path = "crates/rblog-attachments" }
+rblog-auth = { path = "crates/rblog-auth" }
+rblog-content = { path = "crates/rblog-content" }
+rblog-core = { path = "crates/rblog-core" }
+rblog-http = { path = "crates/rblog-http" }
+rblog-index = { path = "crates/rblog-index" }
+rblog-plugins = { path = "crates/rblog-plugins" }
+rblog-scheme = { path = "crates/rblog-scheme" }
+rblog-search = { path = "crates/rblog-search" }
+rblog-store = { path = "crates/rblog-store" }
+rblog-theme = { path = "crates/rblog-theme" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# pedantic noise we don't care about
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+needless_pass_by_value = "allow"
+doc_markdown = "allow"
+too_many_lines = "allow"
+type_complexity = "allow"
+# Halo extension structs mirror upstream JSON; flag counts are fixed.
+struct_excessive_bools = "allow"
+fn_params_excessive_bools = "allow"
+# We use BTreeMap/BTreeSet pervasively in JSON-shaped types; nesting is the
+# data, not the design.
+implicit_hasher = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true

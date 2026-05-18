@@ -1,0 +1,16 @@
+name = "hello-world"
+display_name = "Hello, world!"
+version = "0.1.0"
+description = "Trivial example plugin: returns 'Hello, <name>!' on GET /api/plugins/hello-world/greet."
+authors = ["rblog"]
+entry = "plugin.wat"
+enabled = true
+
+# This plugin needs `http` to receive requests and `log` so the host
+# forwards its log calls into `tracing`. Anything not listed here is
+# unreachable: the runtime traps any attempt to call it.
+capabilities = ["http", "log"]
+
+[[routes]]
+path = "/greet"
+methods = ["GET"]

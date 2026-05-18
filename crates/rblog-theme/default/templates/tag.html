@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Tag: {{ tag.display_name }} — {{ site.title | default('rblog') }}{% endblock %}
+{% block body %}
+  <section class="taxonomy">
+    <h1>Posts tagged "{{ tag.display_name }}"</h1>
+    {% for post in posts %}
+      {% include '_post_card.html' %}
+    {% else %}
+      <p class="empty">No posts with this tag yet.</p>
+    {% endfor %}
+    {% include '_pagination.html' %}
+  </section>
+{% endblock %}

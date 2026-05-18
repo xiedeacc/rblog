@@ -1,0 +1,79 @@
+[package]
+name = "rblog-http"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "HTTP scaffold for rblog: axum, AppState, config, error mapping, tower middleware."
+
+[lints]
+workspace = true
+
+[dependencies]
+rblog-attachments.workspace = true
+rblog-auth.workspace = true
+rblog-content.workspace = true
+rblog-core.workspace = true
+rblog-index.workspace = true
+rblog-plugins.workspace = true
+rblog-scheme.workspace = true
+rblog-search.workspace = true
+rblog-store.workspace = true
+rblog-theme.workspace = true
+
+axum = { version = "0.7", default-features = false, features = [
+    "http1",
+    "http2",
+    "json",
+    "matched-path",
+    "tokio",
+    "macros",
+    "tower-log",
+    "tracing",
+    "query",
+    "form",
+    "multipart",
+] }
+bytes = "1"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.5", features = [
+    "trace",
+    "compression-gzip",
+    "cors",
+    "request-id",
+    "limit",
+    "timeout",
+    "set-header",
+    "fs",
+] }
+axum-extra = { version = "0.9", features = ["cookie"] }
+hyper = { version = "1", features = ["http1", "http2"] }
+http = "1"
+time = "0.3"
+tokio = { workspace = true, features = ["net"] }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+config = { version = "0.14", default-features = false, features = ["toml"] }
+uuid = { version = "1", features = ["v4"] }
+mime = "0.3"
+mime_guess = "2"
+minijinja = "2"
+parking_lot = "0.12"
+utoipa = { version = "5", features = ["axum_extras", "chrono"] }
+utoipa-axum = "0.1"
+async-trait = "0.1"
+rust-embed = { version = "8", optional = true, features = ["compression", "interpolate-folder-path"] }
+
+[features]
+default = []
+embed-admin = ["dep:rust-embed"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "cookies", "multipart"] }
+tempfile = "3"

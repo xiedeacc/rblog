@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="{{ site.locale | default('en') }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
+    {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css" />
+    <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <div class="earth-page">
+      <header class="earth-header">
+        <div class="earth-header__inner">
+          <div class="earth-header__left">
+            <a class="earth-title" href="/">{{ site.title | default('rblog') }}~</a>
+            <nav class="earth-nav">
+              <a class="active" href="/">首页</a>
+              <a href="/about">关于</a>
+              {% for item in menu | default([]) %}
+                <a href="{{ item.href }}"{% if item.target %} target="{{ item.target }}"{% endif %}>{{ item.display_name }}</a>
+              {% endfor %}
+            </nav>
+          </div>
+          <div class="earth-actions">
+            <a href="/feed.xml" aria-label="RSS"><span class="i-tabler-rss"></span></a>
+            <a href="/search" aria-label="Search"><span class="i-tabler-search"></span></a>
+            <a href="/admin/" aria-label="Admin"><span class="i-tabler-world"></span></a>
+          </div>
+        </div>
+      </header>
+
+      <main class="earth-main">
+        {% block body %}{% endblock %}
+      </main>
+
+      <footer class="earth-footer">
+        <span>© {{ now() | date('%Y') }} <a href="/">{{ site.title | default('rblog') }}~</a>. All Rights Reserved. Powered by <a href="https://halo.run" target="_blank" rel="noopener noreferrer">Halo</a>.</span>
+      </footer>
+    </div>
+  </body>
+</html>

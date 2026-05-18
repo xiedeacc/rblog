@@ -1,0 +1,26 @@
+[package]
+name = "rblog-index"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "In-memory secondary index over Halo-compatible Extension JSON blobs: label/annotation selectors, field selectors, sorts, pagination."
+
+[lints]
+workspace = true
+
+[dependencies]
+rblog-scheme.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+parking_lot = "0.12"
+
+[dev-dependencies]
+pretty_assertions = "1"
+rblog-content.workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "rblog-theme"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Theme system: MiniJinja environment, theme.yaml loader, default theme assets."
+
+[lints]
+workspace = true
+
+[dependencies]
+rblog-content.workspace = true
+rblog-scheme.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+minijinja = { version = "2", features = ["loader", "builtins", "macros", "fuel"] }
+parking_lot = "0.12"
+serde_yaml = "0.9"
+walkdir = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"

@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block title %}{{ post.title }} — {{ site.title | default('rblog') }}{% endblock %}
+{% block body %}
+  <article class="post">
+    <header class="post-header">
+      <h1>{{ post.title }}</h1>
+      <p class="post-meta">
+        <time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time>
+        {% if post.reading_time_minutes %} · {{ post.reading_time_minutes }} min read{% endif %}
+        {% if post.tags %}
+          ·
+          {% for tag in post.tags %}<a class="tag" href="/tags/{{ tag.slug }}">{{ tag.display_name }}</a>{% if not loop.last %} {% endif %}{% endfor %}
+        {% endif %}
+      </p>
+    </header>
+    <div class="post-content">
+      {{ post.content | safe }}
+    </div>
+  </article>
+
+  <section class="comments-panel" id="comments">
+    <div class="comments-panel__header">
+      <h2>评论</h2>
+      <span>{{ comments | default([]) | length }} 条</span>
+    </div>
+
+    <div class="comment-list">
+      {% for comment in comments | default([]) %}
+        <article class="comment-item">
+          <div class="comment-item__avatar"><span class="i-tabler-user"></span></div>
+          <div class="comment-item__body">
+            <header>
+              <strong>{{ comment.owner_display_name }}</strong>
+              {% if comment.created_at %}<time>{{ comment.created_at }}</time>{% endif %}
+            </header>
+            <div class="comment-content">{{ comment.content_html | safe }}</div>
+            <button
+              class="comment-reply-toggle"
+              type="button"
+              data-reply-to="{{ comment.name }}"
+              data-reply-author="{{ comment.owner_display_name }}"
+            >回复</button>
+            {% if comment.replies %}
+              <div class="comment-replies">
+                {% for reply in comment.replies %}
+                  <article class="comment-reply">
+                    <header>
+                      <strong>{{ reply.owner_display_name }}</strong>
+                      {% if reply.created_at %}<time>{{ reply.created_at }}</time>{% endif %}
+                    </header>
+                    <div class="comment-content">{{ reply.content_html | safe }}</div>
+                  </article>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        <p class="comment-empty">暂无评论，欢迎留下第一条评论。</p>
+      {% endfor %}
+    </div>
+
+    <form class="comment-form" data-comment-form data-post-slug="{{ post.slug }}">
+      <h3>发表评论</h3>
+      <div class="comment-form__row">
+        <label>
+          昵称
+          <input name="display_name" autocomplete="name" required />
+        </label>
+        <label>
+          邮箱
+          <input name="email" type="email" autocomplete="email" required />
+        </label>
+      </div>
+      <label class="comment-form__body">
+        评论
+        <textarea name="raw" rows="5" required></textarea>
+      </label>
+      <label class="comment-form__website">
+        Website
+        <input name="website" tabindex="-1" autocomplete="off" />
+      </label>
+      <button type="submit">提交评论</button>
+      <p class="comment-form__status" data-comment-status hidden></p>
+    </form>
+
+    <form class="comment-form comment-form--reply" data-reply-form hidden>
+      <h3>回复 <span data-reply-target></span></h3>
+      <div class="comment-form__row">
+        <label>
+          昵称
+          <input name="display_name" autocomplete="name" required />
+        </label>
+        <label>
+          邮箱
+          <input name="email" type="email" autocomplete="email" required />
+        </label>
+      </div>
+      <label class="comment-form__body">
+        回复内容
+        <textarea name="raw" rows="4" required></textarea>
+      </label>
+      <label class="comment-form__website">
+        Website
+        <input name="website" tabindex="-1" autocomplete="off" />
+      </label>
+      <div class="comment-form__actions">
+        <button type="submit">提交回复</button>
+        <button type="button" data-reply-cancel>取消</button>
+      </div>
+      <p class="comment-form__status" data-reply-status hidden></p>
+    </form>
+  </section>
+
+  <script>
+    (() => {
+      const form = document.querySelector("[data-comment-form]");
+      if (!form) return;
+      const status = form.querySelector("[data-comment-status]");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        status.hidden = false;
+        status.textContent = "正在提交...";
+        const body = Object.fromEntries(new FormData(form).entries());
+        body.subject_kind = "Post";
+        body.subject_slug = form.dataset.postSlug;
+        try {
+          const response = await fetch("/api/comments", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error?.message || payload?.message || "评论提交失败");
+          }
+          status.textContent = payload.approved
+            ? "评论已发布，刷新后可见。"
+            : "评论已提交，等待管理员审核。";
+          form.reset();
+        } catch (error) {
+          status.textContent = error.message || "评论提交失败";
+        }
+      });
+      const replyForm = document.querySelector("[data-reply-form]");
+      const replyStatus = replyForm?.querySelector("[data-reply-status]");
+      const replyTarget = replyForm?.querySelector("[data-reply-target]");
+      let replyTo = "";
+      document.querySelectorAll("[data-reply-to]").forEach((button) => {
+        button.addEventListener("click", () => {
+          replyTo = button.dataset.replyTo || "";
+          replyTarget.textContent = button.dataset.replyAuthor || "";
+          replyForm.hidden = false;
+          replyForm.scrollIntoView({ behavior: "smooth", block: "center" });
+          replyForm.querySelector("textarea").focus();
+        });
+      });
+      replyForm?.querySelector("[data-reply-cancel]")?.addEventListener("click", () => {
+        replyTo = "";
+        replyForm.hidden = true;
+        replyStatus.hidden = true;
+      });
+      replyForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!replyTo) return;
+        replyStatus.hidden = false;
+        replyStatus.textContent = "正在提交...";
+        const body = Object.fromEntries(new FormData(replyForm).entries());
+        try {
+          const response = await fetch(`/api/comments/${encodeURIComponent(replyTo)}/replies`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error?.message || payload?.message || "回复提交失败");
+          }
+          replyStatus.textContent = payload.approved
+            ? "回复已发布，刷新后可见。"
+            : "回复已提交，等待管理员审核。";
+          replyForm.reset();
+        } catch (error) {
+          replyStatus.textContent = error.message || "回复提交失败";
+        }
+      });
+    })();
+  </script>
+{% endblock %}

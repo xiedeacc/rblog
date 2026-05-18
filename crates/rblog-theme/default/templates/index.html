@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block body %}
+  <section class="earth-shell">
+    <div class="earth-content">
+      <nav class="earth-filter" aria-label="Categories">
+        <a class="active" href="/">全部</a>
+        {% for category in home.categories | default([]) %}
+          <a href="{{ category.permalink }}">{{ category.display_name }}</a>
+        {% endfor %}
+      </nav>
+
+      <section class="earth-post-list">
+        {% for post in posts %}
+          {% include '_post_card.html' %}
+        {% else %}
+          <p class="empty">No posts yet — write your first one in the admin.</p>
+        {% endfor %}
+      </section>
+      {% include '_pagination.html' %}
+    </div>
+
+    <aside class="earth-sidebar" aria-label="Sidebar">
+      <section class="earth-card earth-profile earth-profile--photo">
+        <div class="earth-profile__cover"></div>
+        <div class="earth-profile__avatar">
+          <img src="/themes/{{ active_theme }}/assets/images/default-avatar.svg" alt="{{ site.title | default('rblog') }}" />
+        </div>
+        <h2>{{ site.title | default('rblog') }}~</h2>
+        <dl class="earth-stats">
+          <div><dt>{{ home.stats.posts | default(0) }}</dt><dd>文章数</dd></div>
+          <div><dt>{{ home.stats.categories | default(0) }}</dt><dd>分类数</dd></div>
+          <div><dt>{{ home.stats.comments | default(0) }}</dt><dd>评论数</dd></div>
+          <div><dt>{{ home.stats.visits | default(0) }}</dt><dd>访问量</dd></div>
+        </dl>
+        <div class="earth-social">
+          <a href="/feed.xml" aria-label="RSS"><span class="i-tabler-rss"></span></a>
+          <a href="https://github.com/xiedeacc" aria-label="GitHub" target="_blank" rel="noopener noreferrer"><span class="i-simple-icons-github"></span></a>
+        </div>
+      </section>
+
+      <section class="earth-card">
+        <h3 class="earth-card__title"><span class="i-tabler-category"></span>分类目录</h3>
+        <ul class="earth-category-list">
+          {% for category in home.categories | default([]) %}
+            <li><a href="{{ category.permalink }}">{{ category.display_name }}</a><span>{{ category.post_count }}</span></li>
+          {% else %}
+            <li><span>暂无分类</span><span>0</span></li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <section class="earth-card">
+        <div class="earth-card__heading">
+          <h3 class="earth-card__title"><span class="i-tabler-tags"></span>标签</h3>
+          <a class="earth-more" href="/tags">更多 <span class="i-tabler-chevron-right"></span></a>
+        </div>
+        <div class="earth-tag-cloud">
+          {% for tag in home.tags | default([]) %}
+            <a href="{{ tag.permalink }}">#{{ tag.display_name }} <sup>{{ tag.post_count }}</sup></a>
+          {% else %}
+            <span>暂无标签</span>
+          {% endfor %}
+        </div>
+      </section>
+    </aside>
+  </section>
+{% endblock %}

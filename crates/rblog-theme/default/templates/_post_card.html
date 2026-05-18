@@ -1,0 +1,11 @@
+<article class="earth-post-card">
+  <div class="earth-post-card__body">
+    <h2><a href="{{ post.permalink }}">{{ post.title }}</a></h2>
+    {% if post.excerpt %}<p class="earth-post-card__excerpt">{{ post.excerpt }}</p>{% endif %}
+  </div>
+  <footer class="earth-post-card__meta">
+    <span class="earth-author-icon"><span class="i-tabler-world"></span></span>
+    <strong>xiedeacc</strong>
+    <span>发布于 <time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time></span>
+  </footer>
+</article>
