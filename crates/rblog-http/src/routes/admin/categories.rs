@@ -35,7 +35,7 @@ pub struct CategoryItem {
     responses((status = 200, body = Vec<CategoryItem>)),
 )]
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<CategoryItem>>, HttpError> {
-    let rows = state.services.categories.stats()?;
+    let rows = state.services.categories.stats().await?;
     let items = rows
         .into_iter()
         .map(|c| CategoryItem {

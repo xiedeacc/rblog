@@ -16,7 +16,7 @@ const PAGE_SIZE: usize = 10;
 
 pub async fn tags(state: State<AppState>, jar: CookieJar) -> Result<Response, HttpError> {
     let user = current_user(&state, &jar).await;
-    let tag_stats = state.services.tags.stats()?;
+    let tag_stats = state.services.tags.stats().await?;
     let mut ctx = base_context(&state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["tags"] = serde_json::to_value(&tag_stats).unwrap_or(json!([]));
@@ -39,14 +39,18 @@ pub async fn tag_posts(
     let Some(tag) = resolve_tag(&state, &slug)? else {
         return Ok(render_404(&state));
     };
-    let list = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        tag: Some(tag.0.clone()),
-        offset: 0,
-        limit: PAGE_SIZE,
-        public_only: user.is_none(),
-        ..PostListQuery::default()
-    })?;
+    let list = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            tag: Some(tag.0.clone()),
+            offset: 0,
+            limit: PAGE_SIZE,
+            public_only: user.is_none(),
+            ..PostListQuery::default()
+        })
+        .await?;
     let mut ctx = base_context(&state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["tag"] = tag.1;
@@ -59,7 +63,7 @@ pub async fn tag_posts(
 
 pub async fn categories(state: State<AppState>, jar: CookieJar) -> Result<Response, HttpError> {
     let user = current_user(&state, &jar).await;
-    let cat_stats = state.services.categories.stats()?;
+    let cat_stats = state.services.categories.stats().await?;
     let mut ctx = base_context(&state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["categories"] = serde_json::to_value(&cat_stats).unwrap_or(json!([]));
@@ -80,14 +84,18 @@ pub async fn category_posts(
     let Some(cat) = resolve_category(&state, &slug)? else {
         return Ok(render_404(&state));
     };
-    let list = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        category: Some(cat.0.clone()),
-        offset: 0,
-        limit: PAGE_SIZE,
-        public_only: user.is_none(),
-        ..PostListQuery::default()
-    })?;
+    let list = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            category: Some(cat.0.clone()),
+            offset: 0,
+            limit: PAGE_SIZE,
+            public_only: user.is_none(),
+            ..PostListQuery::default()
+        })
+        .await?;
     let mut ctx = base_context(&state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["category"] = cat.1;

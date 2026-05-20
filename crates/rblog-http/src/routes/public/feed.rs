@@ -11,13 +11,17 @@ use crate::{AppState, HttpError};
 
 /// RSS 2.0 feed of the 20 newest published posts.
 pub async fn rss(state: State<AppState>) -> Result<Response, HttpError> {
-    let list = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        offset: 0,
-        limit: 20,
-        public_only: true,
-        ..PostListQuery::default()
-    })?;
+    let list = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            offset: 0,
+            limit: 20,
+            public_only: true,
+            ..PostListQuery::default()
+        })
+        .await?;
     let ctx = base_context(&state);
     let site_title = ctx["site"]["title"].as_str().unwrap_or("rblog").to_owned();
     let site_link = absolute_url(&state, "/");
@@ -67,13 +71,17 @@ pub async fn rss(state: State<AppState>) -> Result<Response, HttpError> {
 }
 
 pub async fn sitemap(state: State<AppState>) -> Result<Response, HttpError> {
-    let list = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        offset: 0,
-        limit: 10_000,
-        public_only: true,
-        ..PostListQuery::default()
-    })?;
+    let list = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            offset: 0,
+            limit: 10_000,
+            public_only: true,
+            ..PostListQuery::default()
+        })
+        .await?;
     let mut out = String::with_capacity(8 * 1024);
     out.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
     out.push('\n');

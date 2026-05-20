@@ -1,4 +1,4 @@
-//! Permalink builders. Mirrors Halo's default URL patterns:
+//! Permalink builders for rblog's public URL patterns:
 //!
 //! - `/archives/{slug}` for posts
 //! - `/{slug}` for single pages

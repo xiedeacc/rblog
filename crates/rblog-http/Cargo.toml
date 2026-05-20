@@ -54,6 +54,7 @@ time = "0.3"
 tokio = { workspace = true, features = ["net"] }
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true

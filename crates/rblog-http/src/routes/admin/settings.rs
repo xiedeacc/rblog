@@ -119,7 +119,7 @@ pub async fn upsert_system(
     let cm = state
         .services
         .configmaps
-        .upsert(rblog_core::settings::SYSTEM_CONFIGMAP, body.data)
+        .upsert(rblog_core::SYSTEM_CONFIGMAP, body.data)
         .await?;
     Ok(Json(ConfigMapView {
         name: cm.metadata.name.clone(),
