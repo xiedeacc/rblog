@@ -1,8 +1,8 @@
 //! Comment + Reply management with built-in moderation.
 //!
-//! Halo's comment model is "comment under post or page, reply under
-//! comment". Both share the `BaseCommentSpec` (raw + rendered + owner +
-//! approved/hidden flags + ip + ua).
+//! rblog stores comments under a post or page, and replies under comments.
+//! Both share the same moderation fields: raw/rendered content, owner,
+//! approval, hidden state, IP, and user agent.
 //!
 //! The moderation policy is straightforward in v1:
 //!
@@ -21,16 +21,17 @@ use rblog_content::content::{
 use rblog_content::infra::Ref;
 use rblog_index::{FieldSelector, IndexEngine, LabelSelector, ListOptions, SortDirection};
 use rblog_scheme::{Extension, GroupVersionKind};
-use rblog_store::{AnyPool, TypedStore};
+use rblog_store::AnyPool;
 use serde::Serialize;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::indexing::{remove, upsert};
 use crate::{not_found, ServiceError};
 
-const APPROVED_LABEL: &str = "content.halo.run/approved";
-const SUBJECT_KIND_LABEL: &str = "content.halo.run/subject-kind";
-const SUBJECT_NAME_LABEL: &str = "content.halo.run/subject-name";
+pub(crate) const APPROVED_LABEL: &str = "rblog.dev/approved";
+pub(crate) const SUBJECT_KIND_LABEL: &str = "rblog.dev/subject-kind";
+pub(crate) const SUBJECT_NAME_LABEL: &str = "rblog.dev/subject-name";
 
 /// Heuristic anti-spam scoring for incoming comments.
 ///
@@ -133,7 +134,6 @@ impl CommentService {
             SpamVerdict::Allow => false,
         };
         let (kind_gvk, kind_name) = kind_for(new.subject_kind.as_deref())?;
-        let store = TypedStore::new(&self.pool);
         let now = Utc::now();
         let auto_approved = self.should_auto_approve(&new.owner);
         let approved = auto_approved && !spam_requires_moderation;
@@ -141,7 +141,7 @@ impl CommentService {
         let mut comment = Comment::new(Uuid::new_v4().to_string()).with_spec(CommentSpec {
             base: BaseCommentSpec {
                 raw: new.raw.clone(),
-                content: raw,
+                content: raw.clone(),
                 owner: new.owner.clone(),
                 user_agent: new.user_agent.clone(),
                 ip_address: new.ip_address.clone(),
@@ -163,7 +163,33 @@ impl CommentService {
         comment
             .metadata
             .set_label(SUBJECT_NAME_LABEL, &new.subject_name);
-        let saved = store.create(&comment).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO comments (
+                name, subject_kind, subject_name, parent_name, raw, html, owner_kind, owner_name,
+                owner_display_name, user_agent, ip_address, approved, hidden, top, priority,
+                quote_reply, created_at, approved_at
+            )
+            VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, ?, ?)
+            "#,
+        )
+        .bind(comment.metadata.name.clone())
+        .bind(kind_name)
+        .bind(&new.subject_name)
+        .bind(&new.raw)
+        .bind(raw)
+        .bind(&new.owner.kind)
+        .bind(&new.owner.name)
+        .bind(new.owner.display_name.as_deref())
+        .bind(new.user_agent.as_deref())
+        .bind(new.ip_address.as_deref())
+        .bind(if approved { 1_i64 } else { 0_i64 })
+        .bind(now.to_rfc3339())
+        .bind(approved.then(|| now.to_rfc3339()))
+        .execute(sqlite(&self.pool)?)
+        .await
+        .map_err(map_sqlx)?;
+        let saved = self.comment_by_name(comment.metadata.name()).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
@@ -176,18 +202,14 @@ impl CommentService {
             SpamVerdict::RequireModeration(_) => true,
             SpamVerdict::Allow => false,
         };
-        let store = TypedStore::new(&self.pool);
-        store
-            .fetch::<Comment>(comment_name)
-            .await?
-            .ok_or_else(|| not_found("Comment", comment_name))?;
+        let parent = self.comment_by_name(comment_name).await?;
         let now = Utc::now();
         let auto_approved = self.should_auto_approve(&new.owner);
         let approved = auto_approved && !spam_requires_moderation;
         let mut reply = Reply::new(Uuid::new_v4().to_string()).with_spec(ReplySpec {
             base: BaseCommentSpec {
                 raw: new.raw.clone(),
-                content: raw,
+                content: raw.clone(),
                 owner: new.owner.clone(),
                 user_agent: new.user_agent.clone(),
                 ip_address: new.ip_address.clone(),
@@ -199,124 +221,136 @@ impl CommentService {
                 priority: 0,
                 top: false,
             },
-            comment_name: comment_name.to_owned(),
+            comment_name: parent.metadata.name.clone(),
             quote_reply: new.quote_reply.clone(),
         });
         reply
             .metadata
             .set_label(APPROVED_LABEL, if approved { "true" } else { "false" });
-        let saved = store.create(&reply).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO comments (
+                name, subject_kind, subject_name, parent_name, raw, html, owner_kind, owner_name,
+                owner_display_name, user_agent, ip_address, approved, hidden, top, priority,
+                quote_reply, created_at, approved_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)
+            "#,
+        )
+        .bind(reply.metadata.name.clone())
+        .bind(parent_kind(&parent))
+        .bind(parent_subject(&parent))
+        .bind(&parent.metadata.name)
+        .bind(&new.raw)
+        .bind(raw)
+        .bind(&new.owner.kind)
+        .bind(&new.owner.name)
+        .bind(new.owner.display_name.as_deref())
+        .bind(new.user_agent.as_deref())
+        .bind(new.ip_address.as_deref())
+        .bind(if approved { 1_i64 } else { 0_i64 })
+        .bind(new.quote_reply.as_deref())
+        .bind(now.to_rfc3339())
+        .bind(approved.then(|| now.to_rfc3339()))
+        .execute(sqlite(&self.pool)?)
+        .await
+        .map_err(map_sqlx)?;
+        let saved = self.reply_by_name(reply.metadata.name()).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     /// Flip approval state of a single comment.
     pub async fn approve(&self, name: &str) -> Result<Comment, ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let mut comment = store
-            .fetch::<Comment>(name)
-            .await?
-            .ok_or_else(|| not_found("Comment", name))?;
-        if let Some(spec) = comment.spec.as_mut() {
-            spec.base.approved = true;
-            spec.base.approved_time = Some(Utc::now());
-        }
-        comment.metadata.set_label(APPROVED_LABEL, "true");
-        let saved = store.update(&comment).await?;
+        sqlx::query("UPDATE comments SET approved = 1, approved_at = ? WHERE name = ? AND parent_name IS NULL")
+            .bind(Utc::now().to_rfc3339())
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        let saved = self.comment_by_name(name).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     pub async fn hide(&self, name: &str) -> Result<Comment, ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let mut comment = store
-            .fetch::<Comment>(name)
-            .await?
-            .ok_or_else(|| not_found("Comment", name))?;
-        if let Some(spec) = comment.spec.as_mut() {
-            spec.base.hidden = true;
-        }
-        let saved = store.update(&comment).await?;
+        sqlx::query("UPDATE comments SET hidden = 1 WHERE name = ? AND parent_name IS NULL")
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        let saved = self.comment_by_name(name).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     pub async fn show(&self, name: &str) -> Result<Comment, ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let mut comment = store
-            .fetch::<Comment>(name)
-            .await?
-            .ok_or_else(|| not_found("Comment", name))?;
-        if let Some(spec) = comment.spec.as_mut() {
-            spec.base.hidden = false;
-        }
-        let saved = store.update(&comment).await?;
+        sqlx::query("UPDATE comments SET hidden = 0 WHERE name = ? AND parent_name IS NULL")
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        let saved = self.comment_by_name(name).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     pub async fn approve_reply(&self, name: &str) -> Result<Reply, ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let mut reply = store
-            .fetch::<Reply>(name)
-            .await?
-            .ok_or_else(|| not_found("Reply", name))?;
-        if let Some(spec) = reply.spec.as_mut() {
-            spec.base.approved = true;
-            spec.base.approved_time = Some(Utc::now());
-        }
-        reply.metadata.set_label(APPROVED_LABEL, "true");
-        let saved = store.update(&reply).await?;
+        sqlx::query("UPDATE comments SET approved = 1, approved_at = ? WHERE name = ? AND parent_name IS NOT NULL")
+            .bind(Utc::now().to_rfc3339())
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        let saved = self.reply_by_name(name).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     pub async fn hide_reply(&self, name: &str) -> Result<Reply, ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let mut reply = store
-            .fetch::<Reply>(name)
-            .await?
-            .ok_or_else(|| not_found("Reply", name))?;
-        if let Some(spec) = reply.spec.as_mut() {
-            spec.base.hidden = true;
-        }
-        let saved = store.update(&reply).await?;
+        sqlx::query("UPDATE comments SET hidden = 1 WHERE name = ? AND parent_name IS NOT NULL")
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        let saved = self.reply_by_name(name).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     pub async fn show_reply(&self, name: &str) -> Result<Reply, ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let mut reply = store
-            .fetch::<Reply>(name)
-            .await?
-            .ok_or_else(|| not_found("Reply", name))?;
-        if let Some(spec) = reply.spec.as_mut() {
-            spec.base.hidden = false;
-        }
-        let saved = store.update(&reply).await?;
+        sqlx::query("UPDATE comments SET hidden = 0 WHERE name = ? AND parent_name IS NOT NULL")
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        let saved = self.reply_by_name(name).await?;
         upsert(&self.index, &saved)?;
         Ok(saved)
     }
 
     pub async fn delete_reply(&self, name: &str) -> Result<(), ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let reply = store
-            .fetch::<Reply>(name)
-            .await?
-            .ok_or_else(|| not_found("Reply", name))?;
-        store.delete(&reply).await?;
+        let res = sqlx::query("DELETE FROM comments WHERE name = ? AND parent_name IS NOT NULL")
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        if res.rows_affected() == 0 {
+            return Err(not_found("Reply", name));
+        }
         remove::<Reply>(&self.index, name);
         Ok(())
     }
 
     pub async fn delete(&self, name: &str) -> Result<(), ServiceError> {
-        let store = TypedStore::new(&self.pool);
-        let comment = store
-            .fetch::<Comment>(name)
-            .await?
-            .ok_or_else(|| not_found("Comment", name))?;
-        store.delete(&comment).await?;
+        let res = sqlx::query("DELETE FROM comments WHERE name = ? AND parent_name IS NULL")
+            .bind(name)
+            .execute(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?;
+        if res.rows_affected() == 0 {
+            return Err(not_found("Comment", name));
+        }
         remove::<Comment>(&self.index, name);
         Ok(())
     }
@@ -447,6 +481,26 @@ impl CommentService {
             .collect())
     }
 
+    async fn comment_by_name(&self, name: &str) -> Result<Comment, ServiceError> {
+        let row = sqlx::query("SELECT * FROM comments WHERE name = ? AND parent_name IS NULL")
+            .bind(name)
+            .fetch_optional(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?
+            .ok_or_else(|| not_found("Comment", name))?;
+        comment_from_row(row)
+    }
+
+    async fn reply_by_name(&self, name: &str) -> Result<Reply, ServiceError> {
+        let row = sqlx::query("SELECT * FROM comments WHERE name = ? AND parent_name IS NOT NULL")
+            .bind(name)
+            .fetch_optional(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?
+            .ok_or_else(|| not_found("Reply", name))?;
+        reply_from_row(row)
+    }
+
     fn should_auto_approve(&self, owner: &CommentOwner) -> bool {
         if owner.kind == "User" {
             return true;
@@ -497,6 +551,113 @@ fn sanitize_comment(raw: &str) -> Result<String, ServiceError> {
         .add_generic_attributes(["lang"])
         .clean(&html)
         .to_string())
+}
+
+fn comment_from_row(row: sqlx::sqlite::SqliteRow) -> Result<Comment, ServiceError> {
+    let name: String = row.get("name");
+    let subject_kind: String = row.get("subject_kind");
+    let subject_name: String = row.get("subject_name");
+    let gvk = match subject_kind.as_str() {
+        "SinglePage" => SinglePage::gvk(),
+        _ => Post::gvk(),
+    };
+    let approved = row.get::<i64, _>("approved") != 0;
+    let mut comment = Comment::new(name).with_spec(CommentSpec {
+        base: base_from_row(&row),
+        subject_ref: Ref::of_gvk(subject_name.clone(), &gvk),
+        last_read_time: None,
+    });
+    comment
+        .metadata
+        .set_label(APPROVED_LABEL, if approved { "true" } else { "false" });
+    comment
+        .metadata
+        .set_label(SUBJECT_KIND_LABEL, &subject_kind);
+    comment
+        .metadata
+        .set_label(SUBJECT_NAME_LABEL, &subject_name);
+    Ok(comment)
+}
+
+fn reply_from_row(row: sqlx::sqlite::SqliteRow) -> Result<Reply, ServiceError> {
+    let mut reply = Reply::new(row.get::<String, _>("name")).with_spec(ReplySpec {
+        base: base_from_row(&row),
+        comment_name: row.get("parent_name"),
+        quote_reply: row.try_get("quote_reply").ok().flatten(),
+    });
+    let approved = row.get::<i64, _>("approved") != 0;
+    reply
+        .metadata
+        .set_label(APPROVED_LABEL, if approved { "true" } else { "false" });
+    Ok(reply)
+}
+
+fn base_from_row(row: &sqlx::sqlite::SqliteRow) -> BaseCommentSpec {
+    BaseCommentSpec {
+        raw: row.get("raw"),
+        content: row.get("html"),
+        owner: CommentOwner {
+            kind: row.try_get("owner_kind").ok().flatten().unwrap_or_default(),
+            name: row.try_get("owner_name").ok().flatten().unwrap_or_default(),
+            display_name: row.try_get("owner_display_name").ok().flatten(),
+            annotations: None,
+        },
+        user_agent: row.try_get("user_agent").ok().flatten(),
+        ip_address: row.try_get("ip_address").ok().flatten(),
+        approved: row.get::<i64, _>("approved") != 0,
+        approved_time: parse_dt(
+            row.try_get::<Option<String>, _>("approved_at")
+                .ok()
+                .flatten(),
+        ),
+        creation_time: parse_dt(
+            row.try_get::<Option<String>, _>("created_at")
+                .ok()
+                .flatten(),
+        ),
+        allow_notification: true,
+        hidden: row.get::<i64, _>("hidden") != 0,
+        priority: i32::try_from(row.get::<i64, _>("priority")).unwrap_or_default(),
+        top: row.get::<i64, _>("top") != 0,
+    }
+}
+
+fn parent_kind(comment: &Comment) -> String {
+    comment
+        .metadata
+        .labels
+        .as_ref()
+        .and_then(|labels| labels.get(SUBJECT_KIND_LABEL))
+        .cloned()
+        .unwrap_or_else(|| "Post".to_owned())
+}
+
+fn parent_subject(comment: &Comment) -> String {
+    comment
+        .metadata
+        .labels
+        .as_ref()
+        .and_then(|labels| labels.get(SUBJECT_NAME_LABEL))
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn parse_dt(raw: Option<String>) -> Option<chrono::DateTime<Utc>> {
+    raw.and_then(|value| chrono::DateTime::parse_from_rfc3339(&value).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn sqlite(pool: &AnyPool) -> Result<&sqlx::SqlitePool, ServiceError> {
+    match pool {
+        AnyPool::Sqlite(pool) => Ok(pool),
+        AnyPool::Mysql(_) => Err(ServiceError::Internal(
+            "refactor branch only supports sqlite".to_owned(),
+        )),
+    }
+}
+
+fn map_sqlx(error: sqlx::Error) -> ServiceError {
+    ServiceError::Internal(error.to_string())
 }
 
 #[cfg(test)]

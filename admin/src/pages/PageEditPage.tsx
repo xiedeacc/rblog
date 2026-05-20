@@ -48,6 +48,7 @@ interface PagesSearch {
   visible: string | undefined;
   sort: string | undefined;
   source: string | undefined;
+  returnTo: string | undefined;
 }
 
 function compactPagesSearch(search: PagesSearch): PagesSearch {
@@ -59,6 +60,7 @@ function compactPagesSearch(search: PagesSearch): PagesSearch {
     visible: search.visible,
     sort: undefined,
     source: undefined,
+    returnTo: undefined,
   };
 }
 

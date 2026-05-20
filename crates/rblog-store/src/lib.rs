@@ -1,4 +1,4 @@
-//! Storage primitive: the `extensions(name, data, version)` table.
+//! Storage primitives for rblog's relational tables and legacy imports.
 //!
 //! This crate offers two layers:
 //!

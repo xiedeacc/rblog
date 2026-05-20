@@ -74,6 +74,26 @@ impl PasswordHasher {
             Err(e) => Err(PasswordError::Verify(e.to_string())),
         }
     }
+
+    /// Returns true when a stored hash should be upgraded after a successful
+    /// login. Imported bcrypt hashes verify for migration, but new persisted
+    /// credentials should be Argon2id PHC strings with the current parameters.
+    #[must_use]
+    pub fn needs_rehash(&self, encoded: &str) -> bool {
+        let encoded = strip_spring_id(encoded, "argon2@SpringSecurity_v5_8")
+            .or_else(|| strip_spring_id(encoded, "argon2"))
+            .unwrap_or(encoded);
+        let Ok(parsed) = PasswordHash::new(encoded) else {
+            return true;
+        };
+        if parsed.algorithm.as_str() != "argon2id" {
+            return true;
+        }
+        let params = &parsed.params;
+        params.get("m").and_then(|v| v.decimal().ok()) != Some(65_536)
+            || params.get("t").and_then(|v| v.decimal().ok()) != Some(3)
+            || params.get("p").and_then(|v| v.decimal().ok()) != Some(4)
+    }
 }
 
 fn strip_spring_id<'a>(encoded: &'a str, id: &str) -> Option<&'a str> {
@@ -121,6 +141,15 @@ mod tests {
         let (password, hash) = halo_bcrypt_fixture();
         assert!(h.verify(&password, &hash).unwrap());
         assert!(!h.verify("wrong", &hash).unwrap());
+    }
+
+    #[test]
+    fn bcrypt_needs_rehash_after_successful_login() {
+        let h = PasswordHasher::new();
+        let (_password, hash) = halo_bcrypt_fixture();
+        assert!(h.needs_rehash(&hash));
+        let argon = h.hash("same").unwrap();
+        assert!(!h.needs_rehash(&argon));
     }
 
     fn halo_bcrypt_fixture() -> (String, String) {

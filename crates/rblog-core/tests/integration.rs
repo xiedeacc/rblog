@@ -3,14 +3,14 @@
 use std::sync::Arc;
 
 use rblog_auth::PasswordHasher;
-use rblog_content::content::{CommentOwner, Post, PostSpec, Snapshot, Visible};
+use rblog_content::content::{CommentOwner, Visible};
 use rblog_content::render::MarkdownPipeline;
 use rblog_core::{
     bootstrap_system, build_services, BootstrapOptions, CreateUser, DraftPost, NewCategory,
     NewComment, NewTag, PostListQuery, PostSettingsUpdate, PostStatusFilter, PublishOptions,
 };
-use rblog_scheme::Extension;
-use rblog_store::{run_migrations, AnyPool, TypedStore};
+use rblog_store::{run_migrations, AnyPool};
+use sqlx::Row;
 
 async fn setup() -> rblog_core::Services {
     setup_with_pool().await.0
@@ -96,11 +96,16 @@ async fn draft_publish_and_list_post() {
             status: PostStatusFilter::Any,
             ..PostListQuery::default()
         })
+        .await
         .expect("list");
     assert_eq!(listed.total, 1);
 
     // Empty default published filter -> no posts yet.
-    let published_only = services.posts.list(PostListQuery::default()).expect("list");
+    let published_only = services
+        .posts
+        .list(PostListQuery::default())
+        .await
+        .expect("list");
     assert_eq!(published_only.total, 0);
 
     services
@@ -109,7 +114,11 @@ async fn draft_publish_and_list_post() {
         .await
         .expect("publish");
 
-    let visible = services.posts.list(PostListQuery::default()).expect("list");
+    let visible = services
+        .posts
+        .list(PostListQuery::default())
+        .await
+        .expect("list");
     assert_eq!(visible.total, 1);
     assert_eq!(visible.items[0].slug, "first");
     assert_eq!(visible.items[0].permalink, "/archives/first");
@@ -255,7 +264,11 @@ async fn pinned_posts_sort_before_regular_posts() {
         .await
         .expect("pin");
 
-    let listed = services.posts.list(PostListQuery::default()).expect("list");
+    let listed = services
+        .posts
+        .list(PostListQuery::default())
+        .await
+        .expect("list");
 
     assert_eq!(listed.items[0].name, "pinned");
     assert!(listed.items[0].pinned);
@@ -314,6 +327,7 @@ async fn drafts_sort_after_pinned_and_have_time() {
             status: PostStatusFilter::Any,
             ..PostListQuery::default()
         })
+        .await
         .expect("list");
 
     assert_eq!(listed.items[0].name, "pinned");
@@ -348,24 +362,37 @@ async fn purge_removes_only_target_post_snapshots() {
     }
 
     services.posts.purge("target").await.expect("purge");
-    let store = TypedStore::new(&pool);
-
-    assert!(store.fetch::<Post>("target").await.unwrap().is_none());
-    assert!(store.fetch::<Post>("other").await.unwrap().is_some());
-    assert_eq!(services.index.entry_count(&Post::gvk()), 1);
-    assert_eq!(services.index.entry_count(&Snapshot::gvk()), 1);
+    let sqlite = match &pool {
+        AnyPool::Sqlite(pool) => pool,
+        AnyPool::Mysql(_) => unreachable!(),
+    };
+    let target = sqlx::query("SELECT COUNT(*) AS count FROM posts WHERE name = 'target'")
+        .fetch_one(sqlite)
+        .await
+        .unwrap()
+        .get::<i64, _>("count");
+    let other = sqlx::query("SELECT COUNT(*) AS count FROM posts WHERE name = 'other'")
+        .fetch_one(sqlite)
+        .await
+        .unwrap()
+        .get::<i64, _>("count");
+    assert_eq!(target, 0);
+    assert_eq!(other, 1);
 }
 
 #[tokio::test]
 async fn admin_detail_handles_imported_post_without_snapshots() {
     let (services, pool) = setup_with_pool().await;
-    let store = TypedStore::new(&pool);
-    let post = Post::new("legacy-empty").with_spec(PostSpec {
-        title: "Legacy Empty".into(),
-        slug: "legacy-empty".into(),
-        ..PostSpec::default()
-    });
-    store.create(&post).await.expect("create legacy post");
+    let sqlite = match &pool {
+        AnyPool::Sqlite(pool) => pool,
+        AnyPool::Mysql(_) => unreachable!(),
+    };
+    sqlx::query(
+        "INSERT INTO posts (name, title, slug, markdown, html, raw_type, published, visible, deleted, pinned, allow_comment, priority, visits) VALUES ('legacy-empty', 'Legacy Empty', 'legacy-empty', '', '', 'markdown', 0, 'PUBLIC', 0, 0, 1, 0, 0)",
+    )
+    .execute(sqlite)
+    .await
+    .expect("create imported post");
 
     let detail = services
         .posts
@@ -443,11 +470,11 @@ async fn tag_and_category_stats_count_published_posts() {
         .await
         .expect("publish");
 
-    let tag_stats = services.tags.stats().expect("tag stats");
+    let tag_stats = services.tags.stats().await.expect("tag stats");
     assert_eq!(tag_stats.len(), 1);
     assert_eq!(tag_stats[0].post_count, 1);
 
-    let cat_stats = services.categories.stats().expect("cat stats");
+    let cat_stats = services.categories.stats().await.expect("cat stats");
     assert_eq!(cat_stats.len(), 1);
     assert_eq!(cat_stats[0].post_count, 1);
 }

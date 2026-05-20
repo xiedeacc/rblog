@@ -32,25 +32,33 @@ async fn render_index(
     let user = current_user(state, jar).await;
     let public_only = user.is_none();
     let offset = (page - 1) * PAGE_SIZE;
-    let list = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        offset,
-        limit: PAGE_SIZE,
-        public_only,
-        ..PostListQuery::default()
-    })?;
-    let all_public = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        offset: 0,
-        limit: 10_000,
-        public_only,
-        ..PostListQuery::default()
-    })?;
+    let list = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            offset,
+            limit: PAGE_SIZE,
+            public_only,
+            ..PostListQuery::default()
+        })
+        .await?;
+    let all_public = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            offset: 0,
+            limit: 10_000,
+            public_only,
+            ..PostListQuery::default()
+        })
+        .await?;
     let mut ctx = base_context(state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["posts"] = serde_json::to_value(&list.items).unwrap_or(json!([]));
     ctx["pagination"] = pagination("/", page, PAGE_SIZE, list.total);
-    ctx["home"] = homepage_context(state, &all_public.items)?;
+    ctx["home"] = homepage_context(state, &all_public.items).await?;
     let renderer = active_renderer(state)?;
     Ok(super::no_store_html(renderer.render("index.html", &ctx)?))
 }
@@ -59,13 +67,17 @@ pub async fn archive(state: State<AppState>, jar: CookieJar) -> Result<Response,
     let user = current_user(&state, &jar).await;
     // Archive shows every published post on a single page. Large blogs can
     // override this template themselves; v1 keeps the simple shape.
-    let list = state.services.posts.list(PostListQuery {
-        status: PostStatusFilter::Published,
-        offset: 0,
-        limit: 10_000,
-        public_only: user.is_none(),
-        ..PostListQuery::default()
-    })?;
+    let list = state
+        .services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Published,
+            offset: 0,
+            limit: 10_000,
+            public_only: user.is_none(),
+            ..PostListQuery::default()
+        })
+        .await?;
     let mut ctx = base_context(&state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["posts"] = serde_json::to_value(&list.items).unwrap_or(json!([]));
@@ -73,12 +85,12 @@ pub async fn archive(state: State<AppState>, jar: CookieJar) -> Result<Response,
     Ok(super::no_store_html(renderer.render("archive.html", &ctx)?))
 }
 
-fn homepage_context(
+async fn homepage_context(
     state: &AppState,
     posts: &[rblog_core::PostListItem],
 ) -> Result<serde_json::Value, HttpError> {
-    let categories = state.services.categories.stats()?;
-    let tags = state.services.tags.stats()?;
+    let categories = state.services.categories.stats().await?;
+    let tags = state.services.tags.stats().await?;
     let comments = state.services.comments.public_comment_count()?;
     let public_categories = categories
         .into_iter()

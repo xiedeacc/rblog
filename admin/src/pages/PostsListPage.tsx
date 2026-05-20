@@ -52,6 +52,7 @@ interface PostsSearch {
   visible: string | undefined;
   sort: string | undefined;
   source: string | undefined;
+  returnTo: string | undefined;
 }
 
 type PostAction =
@@ -103,6 +104,7 @@ export function PostsListPage() {
       visible: visible === "PUBLIC" ? undefined : visible,
       sort,
       source: undefined,
+      returnTo: undefined,
     }),
     [page, q, size, sort, status, visible],
   );

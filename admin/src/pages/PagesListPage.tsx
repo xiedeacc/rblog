@@ -33,6 +33,7 @@ interface PagesSearch {
   visible: string | undefined;
   sort: string | undefined;
   source: string | undefined;
+  returnTo: string | undefined;
 }
 
 function formatDate(value: string | null): string {
@@ -69,6 +70,7 @@ export function PagesListPage() {
       visible: visible === "any" ? undefined : visible,
       sort: undefined,
       source: undefined,
+      returnTo: undefined,
     }),
     [page, q, size, status, visible],
   );

@@ -132,7 +132,7 @@ struct LocalStorage {
 #[async_trait]
 impl StorageBackend for LocalStorage {
     async fn put(&self, key: &str, bytes: Bytes) -> Result<PutResult, StorageError> {
-        let path = ObjectPath::from(key);
+        let path = object_path(key)?;
         let size = bytes.len() as u64;
         self.store.put(&path, PutPayload::from(bytes)).await?;
         Ok(PutResult {
@@ -143,20 +143,20 @@ impl StorageBackend for LocalStorage {
     }
 
     async fn get(&self, key: &str) -> Result<Bytes, StorageError> {
-        let path = ObjectPath::from(key);
+        let path = object_path(key)?;
         let bytes = self.store.get(&path).await?.bytes().await?;
         Ok(bytes)
     }
 
     async fn delete(&self, key: &str) -> Result<(), StorageError> {
-        let path = ObjectPath::from(key);
+        let path = object_path(key)?;
         self.store.delete(&path).await?;
         Ok(())
     }
 
     async fn list(&self, prefix: Option<&str>) -> Result<Vec<ObjectMetadata>, StorageError> {
         use futures::stream::StreamExt;
-        let prefix_path = prefix.map(ObjectPath::from);
+        let prefix_path = prefix.map(object_path).transpose()?;
         let mut stream = self.store.list(prefix_path.as_ref());
         let mut out = Vec::new();
         while let Some(item) = stream.next().await {
@@ -204,7 +204,7 @@ struct S3Storage {
 #[async_trait]
 impl StorageBackend for S3Storage {
     async fn put(&self, key: &str, bytes: Bytes) -> Result<PutResult, StorageError> {
-        let path = ObjectPath::from(key);
+        let path = object_path(key)?;
         let size = bytes.len() as u64;
         self.store.put(&path, PutPayload::from(bytes)).await?;
         Ok(PutResult {
@@ -215,20 +215,20 @@ impl StorageBackend for S3Storage {
     }
 
     async fn get(&self, key: &str) -> Result<Bytes, StorageError> {
-        let path = ObjectPath::from(key);
+        let path = object_path(key)?;
         let bytes = self.store.get(&path).await?.bytes().await?;
         Ok(bytes)
     }
 
     async fn delete(&self, key: &str) -> Result<(), StorageError> {
-        let path = ObjectPath::from(key);
+        let path = object_path(key)?;
         self.store.delete(&path).await?;
         Ok(())
     }
 
     async fn list(&self, prefix: Option<&str>) -> Result<Vec<ObjectMetadata>, StorageError> {
         use futures::stream::StreamExt;
-        let prefix_path = prefix.map(ObjectPath::from);
+        let prefix_path = prefix.map(object_path).transpose()?;
         let mut stream = self.store.list(prefix_path.as_ref());
         let mut out = Vec::new();
         while let Some(item) = stream.next().await {
@@ -250,6 +250,16 @@ impl StorageBackend for S3Storage {
         // Keep the label dynamic so log lines distinguish buckets.
         Box::leak(format!("s3:{}", self.bucket).into_boxed_str())
     }
+}
+
+fn object_path(key: &str) -> Result<ObjectPath, StorageError> {
+    if key.starts_with('/')
+        || key.contains('\\')
+        || key.split('/').any(|segment| segment.is_empty() || segment == "..")
+    {
+        return Err(StorageError::InvalidPath(key.to_owned()));
+    }
+    Ok(ObjectPath::from(key))
 }
 
 #[cfg(test)]

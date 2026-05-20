@@ -90,7 +90,7 @@
   </section>
 
   {% if current_user %}
-    <a class="halo-post-edit" href="/admin/posts/{{ post.name }}" aria-label="编辑文章" title="编辑文章">
+    <a class="halo-post-edit" href="/admin/posts/{{ post.name }}?returnTo={{ post.permalink }}" aria-label="编辑文章" title="编辑文章">
       <span class="i-tabler-pencil"></span>
     </a>
   {% endif %}

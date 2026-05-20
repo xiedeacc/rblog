@@ -35,7 +35,7 @@ pub struct TagItem {
     responses((status = 200, body = Vec<TagItem>)),
 )]
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<TagItem>>, HttpError> {
-    let rows = state.services.tags.stats()?;
+    let rows = state.services.tags.stats().await?;
     let items = rows
         .into_iter()
         .map(|t| TagItem {

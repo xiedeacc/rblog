@@ -74,6 +74,7 @@ const validatePostsSearch = (search: Record<string, unknown>) => ({
   visible: stringSearch(search.visible),
   sort: stringSearch(search.sort),
   source: stringSearch(search.source),
+  returnTo: stringSearch(search.returnTo),
 });
 
 const dashboardRoute = createRoute({

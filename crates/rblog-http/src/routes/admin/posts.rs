@@ -155,12 +155,16 @@ pub async fn list(
         public_only: false,
     };
     if let Some(visible) = visible {
-        let page = state.services.posts.list(PostListQuery {
-            visible: None,
-            offset: 0,
-            limit: 10_000,
-            ..query
-        })?;
+        let page = state
+            .services
+            .posts
+            .list(PostListQuery {
+                visible: None,
+                offset: 0,
+                limit: 10_000,
+                ..query
+            })
+            .await?;
         let filtered = page
             .items
             .into_iter()
@@ -178,7 +182,7 @@ pub async fn list(
         }));
     }
 
-    let page = state.services.posts.list(query)?;
+    let page = state.services.posts.list(query).await?;
     Ok(Json(ListPage {
         items: page.items.into_iter().map(PostSummary::from).collect(),
         total: page.total,

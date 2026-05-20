@@ -1,60 +1,53 @@
 //! Domain services for the public blog and the admin API.
 //!
-//! Each `*Service` wraps a [`TypedStore`] + [`IndexEngine`] pair and adds
-//! the rules that distinguish a v1 blog from a generic K/V store:
+//! Each `*Service` wraps rblog's relational tables and adds the domain rules
+//! that distinguish a blog from a generic database:
 //!
-//! - Cascading writes (creating a `Post` also creates its base `Snapshot`).
-//! - Soft-delete labels matching Halo's `content.halo.run/deleted` /
-//!   `content.halo.run/published` conventions.
-//! - Derived projections (`PostListItem`, `PostDetail`) that combine `Post`
-//!   metadata with composed snapshot content, taxonomy lookups, reading
-//!   time, and permalinks.
-//! - First-run bootstrap: install default theme, default super-admin user,
-//!   default role + binding.
+//! - Relational post/page CRUD with markdown rendering.
+//! - Derived projections (`PostListItem`, `PostDetail`) that combine content,
+//!   taxonomy lookups, reading counts, and permalinks.
+//! - First-run bootstrap: create the initial admin user and site settings.
 //!
 //! ## Concurrency
 //!
 //! Services are `Send + Sync`. They are intentionally stateless — the
-//! caller owns the `TypedStore<'_>` pool reference. Indexing happens
-//! synchronously in the service call: every successful create / update /
-//! delete updates the [`IndexEngine`] before returning.
+//! caller owns the SQL pool reference. Indexing is only used for lightweight
+//! runtime projections that templates need synchronously.
 //!
 //! ## Errors
 //!
 //! All services share [`ServiceError`]. The most common variants:
 //!
-//! - `NotFound(kind, name)` — the requested extension does not exist.
+//! - `NotFound(kind, name)` — the requested record does not exist.
 //! - `Conflict(kind, name)` — typically a duplicate name on create.
 //! - `Validation(message)` — slug/title/email constraints.
 //! - `Storage(_)` — propagated from `rblog-store`.
 
 pub mod bootstrap;
+pub mod clean_pages;
+pub mod clean_posts;
+pub mod clean_settings;
+pub mod clean_taxonomy;
+pub mod clean_users;
 pub mod comments;
-pub mod menus;
-pub mod pages;
-pub mod posts;
-pub mod settings;
 pub mod system;
-pub mod taxonomy;
-pub mod users;
 
 mod indexing;
 mod permalink;
 
 pub use bootstrap::{bootstrap_system, BootstrapOptions};
-pub use comments::{CommentService, NewComment, SpamHeuristic, SpamVerdict};
-pub use menus::MenuService;
-pub use pages::{
+pub use clean_pages::{
     PageDetail, PageListItem, PageListQuery, PageService, PageSettingsUpdate, PageStatusFilter,
 };
-pub use posts::{
+pub use clean_posts::{
     DraftPost, PostDetail, PostListItem, PostListQuery, PostService, PostSettingsUpdate,
     PostStatusFilter, PublishOptions,
 };
-pub use settings::{ConfigMapService, SettingService};
+pub use clean_settings::{ConfigMapService, SettingService, SYSTEM_CONFIGMAP};
+pub use clean_taxonomy::{CategoryService, NewCategory, NewTag, TagService};
+pub use clean_users::{AuthenticatedUser, CreateUser, UserService};
+pub use comments::{CommentService, NewComment, SpamHeuristic, SpamVerdict};
 pub use system::{build_services, resync_all};
-pub use taxonomy::{CategoryService, NewCategory, NewTag, TagService};
-pub use users::{CreateUser, UserService};
 
 use std::sync::Arc;
 
@@ -70,7 +63,6 @@ pub struct Services {
     pub tags: Arc<TagService>,
     pub comments: Arc<CommentService>,
     pub users: Arc<UserService>,
-    pub menus: Arc<MenuService>,
     pub settings: Arc<SettingService>,
     pub configmaps: Arc<ConfigMapService>,
     pub hasher: Arc<PasswordHasher>,
