@@ -35,6 +35,8 @@ interface HeadingItem {
   depth: number;
   title: string;
   id: string;
+  line: number;
+  offset: number;
 }
 
 interface MarkdownPreviewProps {
@@ -57,13 +59,17 @@ function slugify(value: string): string {
   return slug || "section";
 }
 
+function lineAtOffset(value: string, offset: number): number {
+  return value.slice(0, offset).split("\n").length - 1;
+}
+
 function extractHeadings(markdown: string): HeadingItem[] {
   const content = markdown
     .replace(/```[\s\S]*?```/g, "")
     .replace(/~~~[\s\S]*?~~~/g, "");
   const headings: HeadingItem[] = [];
   const seen = new Map<string, number>();
-  const addHeading = (depth: number, rawTitle: string) => {
+  const addHeading = (depth: number, rawTitle: string, offset: number) => {
     const title = rawTitle
       .replace(/<[^>]+>/g, "")
       .replace(/&nbsp;/g, " ")
@@ -80,16 +86,18 @@ function extractHeadings(markdown: string): HeadingItem[] {
       depth,
       title,
       id: count === 0 ? baseId : `${baseId}-${count + 1}`,
+      line: lineAtOffset(content, offset),
+      offset,
     });
   };
 
   for (const match of content.matchAll(/^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?$/gm)) {
-    addHeading((match[1] ?? "").length, match[2] ?? "");
+    addHeading((match[1] ?? "").length, match[2] ?? "", match.index ?? 0);
   }
   for (const match of content.matchAll(/<h([1-6])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi)) {
-    addHeading(Number(match[1]), match[2] ?? "");
+    addHeading(Number(match[1]), match[2] ?? "", match.index ?? 0);
   }
-  return headings.sort((a, b) => content.indexOf(a.title) - content.indexOf(b.title));
+  return headings.sort((a, b) => a.offset - b.offset);
 }
 
 function renderMath(markdown: string): string {
@@ -330,17 +338,41 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
     update(`${markdown.slice(0, start)}${plain}${markdown.slice(end)}`);
   };
 
-  const syncScroll = (
-    source: HTMLElement,
-    target: HTMLElement | null,
-    sourceName: "editor" | "preview",
-  ) => {
-    if (!target || scrollSyncSource.current) return;
-    const sourceMax = source.scrollHeight - source.clientHeight;
-    const targetMax = target.scrollHeight - target.clientHeight;
-    if (sourceMax <= 0 || targetMax <= 0) return;
-    scrollSyncSource.current = sourceName;
-    target.scrollTop = (source.scrollTop / sourceMax) * targetMax;
+  const editorLineHeight = () => {
+    const el = textarea.current;
+    if (!el) return 20;
+    const parsed = Number.parseFloat(getComputedStyle(el).lineHeight);
+    return Number.isFinite(parsed) ? parsed : 20;
+  };
+
+  const syncFromEditor = (source: HTMLTextAreaElement) => {
+    const target = previewRef.current;
+    if (!target || scrollSyncSource.current || !headings.length) return;
+    const currentLine = Math.max(0, Math.floor(source.scrollTop / editorLineHeight()));
+    const active = [...headings].reverse().find((heading) => heading.line <= currentLine) ?? headings[0];
+    if (!active) return;
+    const targetHeading = target.querySelector<HTMLElement>(`#${CSS.escape(active.id)}`);
+    if (!targetHeading) return;
+    scrollSyncSource.current = "editor";
+    target.scrollTop = Math.max(0, targetHeading.offsetTop - 8);
+    requestAnimationFrame(() => {
+      scrollSyncSource.current = null;
+    });
+  };
+
+  const syncFromPreview = (source: HTMLDivElement) => {
+    if (!textarea.current || scrollSyncSource.current || !headings.length) return;
+    const headingElements = [...source.querySelectorAll<HTMLElement>("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]")];
+    if (!headingElements.length) return;
+    const scrollTop = source.scrollTop + 12;
+    const activeElement =
+      [...headingElements].reverse().find((heading) => heading.offsetTop <= scrollTop) ??
+      headingElements[0];
+    if (!activeElement) return;
+    const active = headings.find((heading) => heading.id === activeElement.id);
+    if (!active) return;
+    scrollSyncSource.current = "preview";
+    textarea.current.scrollTop = active.line * editorLineHeight();
     requestAnimationFrame(() => {
       scrollSyncSource.current = null;
     });
@@ -431,7 +463,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
           aria-label="Post body"
           value={markdown}
           onChange={(event) => update(event.target.value)}
-          onScroll={(event) => syncScroll(event.currentTarget, previewRef.current, "editor")}
+          onScroll={(event) => syncFromEditor(event.currentTarget)}
           onPaste={handlePaste}
           placeholder="Write your post in markdown..."
         />
@@ -439,7 +471,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
           <MarkdownPreview
             markdown={markdown}
             previewRef={previewRef}
-            onScroll={(event) => syncScroll(event.currentTarget, textarea.current, "preview")}
+            onScroll={(event) => syncFromPreview(event.currentTarget)}
           />
         ) : null}
         {preview ? (
