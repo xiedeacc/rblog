@@ -418,6 +418,16 @@ body {
   line-height: 1.5;
 }
 
+.post-edit-card {
+  border: 0;
+  border-radius: 0;
+  margin-left: -0.5rem;
+}
+
+.post-edit-card .ant-card-body {
+  padding: 0;
+}
+
 .post-edit-sticky-top {
   display: grid;
   gap: 0.75rem;
@@ -748,7 +758,7 @@ body {
   z-index: 50;
   display: grid;
   gap: 0.75rem;
-  padding: 1rem 1rem 0;
+  padding: 0.75rem 1rem 0;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   box-shadow: 0 1px 6px rgba(15, 23, 42, 0.08);
@@ -795,7 +805,9 @@ body {
 .markdown-editor-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 13rem;
-  min-height: 620px;
+  height: calc(100vh - 12rem);
+  min-height: 34rem;
+  align-items: stretch;
 }
 
 .markdown-editor-grid--single {
@@ -803,19 +815,24 @@ body {
 }
 
 .markdown-editor-input {
+  box-sizing: border-box;
   width: 100%;
-  min-height: 620px;
+  height: 100%;
+  min-height: 0;
   border: 0;
   border-right: 1px solid #e5e7eb;
   padding: 1rem;
-  resize: vertical;
+  resize: none;
   outline: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;
   line-height: 1.7;
+  overflow: auto;
 }
 
 .markdown-preview {
+  box-sizing: border-box;
+  height: 100%;
   min-width: 0;
   overflow: auto;
   padding: 1.25rem;

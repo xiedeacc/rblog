@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode, type RefObject, type UIEvent } from "react";
 import { App, Button, Dropdown, Space, Tooltip } from "antd";
 import {
   BoldOutlined,
@@ -40,6 +40,8 @@ interface HeadingItem {
 interface MarkdownPreviewProps {
   markdown: string;
   className?: string;
+  previewRef?: RefObject<HTMLDivElement | null>;
+  onScroll?: (event: UIEvent<HTMLDivElement>) => void;
 }
 
 function escapeRegExp(value: string): string {
@@ -126,8 +128,9 @@ export function renderMarkdownPreview(markdown: string): string {
   );
 }
 
-export function MarkdownPreview({ markdown, className = "markdown-preview" }: MarkdownPreviewProps) {
-  const previewRef = useRef<HTMLDivElement | null>(null);
+export function MarkdownPreview({ markdown, className = "markdown-preview", previewRef, onScroll }: MarkdownPreviewProps) {
+  const internalPreviewRef = useRef<HTMLDivElement | null>(null);
+  const activePreviewRef = previewRef ?? internalPreviewRef;
   const html = useMemo(() => renderMarkdownPreview(markdown), [markdown]);
 
   useEffect(() => {
@@ -135,14 +138,15 @@ export function MarkdownPreview({ markdown, className = "markdown-preview" }: Ma
   }, []);
 
   useEffect(() => {
-    if (!previewRef.current) return;
-    void mermaid.run({ nodes: previewRef.current.querySelectorAll(".mermaid") });
-  }, [markdown]);
+    if (!activePreviewRef.current) return;
+    void mermaid.run({ nodes: activePreviewRef.current.querySelectorAll(".mermaid") });
+  }, [activePreviewRef, markdown]);
 
   return (
     <div
-      ref={previewRef}
+      ref={activePreviewRef}
       className={className}
+      onScroll={onScroll}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -173,6 +177,8 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
   const [sidePanel, setSidePanel] = useState<"toc" | "detail">("toc");
   const markdownRef = useRef(initialMarkdown);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const scrollSyncSource = useRef<"editor" | "preview" | null>(null);
   const imageInput = useRef<HTMLInputElement | null>(null);
   const attachmentInput = useRef<HTMLInputElement | null>(null);
 
@@ -324,6 +330,22 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
     update(`${markdown.slice(0, start)}${plain}${markdown.slice(end)}`);
   };
 
+  const syncScroll = (
+    source: HTMLElement,
+    target: HTMLElement | null,
+    sourceName: "editor" | "preview",
+  ) => {
+    if (!target || scrollSyncSource.current) return;
+    const sourceMax = source.scrollHeight - source.clientHeight;
+    const targetMax = target.scrollHeight - target.clientHeight;
+    if (sourceMax <= 0 || targetMax <= 0) return;
+    scrollSyncSource.current = sourceName;
+    target.scrollTop = (source.scrollTop / sourceMax) * targetMax;
+    requestAnimationFrame(() => {
+      scrollSyncSource.current = null;
+    });
+  };
+
   return (
     <div className="markdown-editor-shell">
       <div className="markdown-editor-sticky-top">
@@ -409,10 +431,17 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
           aria-label="Post body"
           value={markdown}
           onChange={(event) => update(event.target.value)}
+          onScroll={(event) => syncScroll(event.currentTarget, previewRef.current, "editor")}
           onPaste={handlePaste}
           placeholder="Write your post in markdown..."
         />
-        {preview ? <MarkdownPreview markdown={markdown} /> : null}
+        {preview ? (
+          <MarkdownPreview
+            markdown={markdown}
+            previewRef={previewRef}
+            onScroll={(event) => syncScroll(event.currentTarget, textarea.current, "preview")}
+          />
+        ) : null}
         {preview ? (
           <aside className="markdown-inspector">
             <div className="markdown-inspector__tabs">
