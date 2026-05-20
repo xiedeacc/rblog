@@ -46,22 +46,47 @@ function escapeRegExp(value: string): string {
 }
 
 function slugify(value: string): string {
-  return value
+  const slug = value
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .replace(/\s+/g, "-");
+  return slug || "section";
 }
 
 function extractHeadings(markdown: string): HeadingItem[] {
-  return [...markdown.matchAll(/^(#{1,3})\s+(.+)$/gm)].map((match) => {
-    const title = (match[2] ?? "").replace(/[*_`]/g, "").trim();
-    return {
-      depth: (match[1] ?? "").length,
+  const content = markdown
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/~~~[\s\S]*?~~~/g, "");
+  const headings: HeadingItem[] = [];
+  const seen = new Map<string, number>();
+  const addHeading = (depth: number, rawTitle: string) => {
+    const title = rawTitle
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/[*_`]/g, "")
+      .trim();
+    if (!title) return;
+    const baseId = slugify(title);
+    const count = seen.get(baseId) ?? 0;
+    seen.set(baseId, count + 1);
+    headings.push({
+      depth,
       title,
-      id: slugify(title),
-    };
-  });
+      id: count === 0 ? baseId : `${baseId}-${count + 1}`,
+    });
+  };
+
+  for (const match of content.matchAll(/^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?$/gm)) {
+    addHeading((match[1] ?? "").length, match[2] ?? "");
+  }
+  for (const match of content.matchAll(/<h([1-6])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi)) {
+    addHeading(Number(match[1]), match[2] ?? "");
+  }
+  return headings.sort((a, b) => content.indexOf(a.title) - content.indexOf(b.title));
 }
 
 function renderMath(markdown: string): string {
@@ -337,7 +362,6 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
                 { key: "video", label: "Video", icon: <VideoCameraOutlined />, onClick: () => insertBlock('<video controls src="https://example.com/video.mp4"></video>') },
                 { key: "audio", label: "Audio", icon: <AudioOutlined />, onClick: () => insertBlock('<audio controls src="https://example.com/audio.mp3"></audio>') },
                 { key: "iframe", label: "Iframe", onClick: () => insertBlock('<iframe src="https://example.com" width="100%" height="360"></iframe>') },
-                { key: "toc", label: "TOC", onClick: () => insert("\n[[toc]]\n") },
                 { key: "detail", label: "Detail block", onClick: () => insert("\n<details>\n<summary>", "</summary>\n\nDetail content\n</details>\n", "Title") },
                 { key: "columns", label: "Column Card", onClick: () => insertBlock('<div class="columns">\n\n<div>\n\nColumn 1\n\n</div>\n\n<div>\n\nColumn 2\n\n</div>\n\n</div>') },
                 { key: "mermaid", label: "Mermaid", onClick: () => insert("\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n") },

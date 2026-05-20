@@ -76,6 +76,42 @@ function generateUuid(): string {
   return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
 }
 
+function markdownTableCell(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .trim();
+}
+
+function tableToMarkdown(table: HTMLElement): string {
+  const rows = [...table.querySelectorAll("tr")]
+    .map((row) => [...row.children]
+      .filter((cell) => cell.tagName === "TH" || cell.tagName === "TD")
+      .map((cell) => markdownTableCell(cell.textContent ?? "")))
+    .filter((cells) => cells.length > 0);
+  if (rows.length === 0) {
+    return "";
+  }
+
+  const maxColumns = Math.max(...rows.map((cells) => cells.length));
+  const normalizedRows = rows.map((cells) => [
+    ...cells,
+    ...Array.from({ length: maxColumns - cells.length }, () => ""),
+  ]);
+  const firstRow = table.querySelector("tr");
+  const hasHeader =
+    table.querySelector("thead th") !== null ||
+    (firstRow ? [...firstRow.children].some((cell) => cell.tagName === "TH") : false);
+  const fallbackHeader = Array.from({ length: maxColumns }, (_, index) => `Column ${index + 1}`);
+  const header = hasHeader ? (normalizedRows[0] ?? fallbackHeader) : fallbackHeader;
+  const bodyRows = hasHeader ? normalizedRows.slice(1) : normalizedRows;
+  const separator = Array.from({ length: maxColumns }, () => "---");
+  const line = (cells: string[]) => `| ${cells.join(" | ")} |`;
+
+  return `\n\n${[line(header), line(separator), ...bodyRows.map(line)].join("\n")}\n\n`;
+}
+
 function htmlToMarkdown(html: string): string {
   const turndown = new TurndownService({
     headingStyle: "atx",
@@ -87,6 +123,10 @@ function htmlToMarkdown(html: string): string {
 
   turndown.use(gfm);
   turndown.keep(["iframe", "video", "audio"]);
+  turndown.addRule("tables", {
+    filter: ["table"],
+    replacement: (_content, node) => tableToMarkdown(node as HTMLElement),
+  });
   turndown.addRule("details", {
     filter: ["details"],
     replacement: (_content, node) => {
@@ -357,73 +397,74 @@ export function PostEditPage() {
   };
 
   return (
-    <Card>
+    <Card className="post-edit-card">
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Title level={3} style={{ margin: 0 }}>
-            {isNew ? "New post" : post.data?.title || "Edit post"}
-          </Title>
-          <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={backToPosts}>
-              Back
-            </Button>
-            <Button
-              icon={<SettingOutlined />}
-              onClick={() => setSettingsOpen(true)}
-            >
-              Setting
-            </Button>
-            {isHtmlPost ? (
-              <Button onClick={openConvertPreview}>
-                Convert to Markdown
-              </Button>
-            ) : null}
-            <Button
-              icon={<SaveOutlined />}
-              type="primary"
-              loading={save.isPending}
-              onClick={() => save.mutate()}
-            >
-              Save
-            </Button>
-            {!isNew && (
-              <Button
-                icon={<SendOutlined />}
-                loading={publish.isPending}
-                onClick={() => publish.mutate()}
-              >
-                {published ? "Unpublish" : "Publish"}
-              </Button>
-            )}
-          </Space>
-        </div>
-
-        {!published ? (
-          <Text type={autoSaveStatus.startsWith("Autosave failed") ? "danger" : "secondary"}>
-            {autoSaveStatus}
-          </Text>
-        ) : null}
-
-        {hasMissingSnapshot ? (
-          <Alert
-            type="warning"
-            showIcon
-            message="This imported post has no content snapshot"
-            description="The original data contains the post metadata, but no base/head/release snapshot, so there is no body content to show."
-          />
-        ) : null}
-
-        {rawType !== "markdown" ? (
-          <Alert
-            type="info"
-            showIcon
-            message={`This post was imported as ${rawType.toUpperCase()}`}
-            description="The editor shows the original source format on the left. For HTML posts, that means HTML source rather than Markdown."
-            action={isHtmlPost ? <Button size="small" onClick={openConvertPreview}>Convert</Button> : undefined}
-          />
-        ) : null}
-
         <Form form={form} layout="vertical" onValuesChange={() => setAutoSaveDirty(true)}>
+          <div className="post-edit-sticky-top">
+            <div className="post-edit-header">
+              <Title level={3} style={{ margin: 0 }}>
+                {isNew ? "New post" : post.data?.title || "Edit post"}
+              </Title>
+              <Space wrap>
+                <Button icon={<ArrowLeftOutlined />} onClick={backToPosts}>
+                  Back
+                </Button>
+                <Button
+                  icon={<SettingOutlined />}
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  Setting
+                </Button>
+                {isHtmlPost ? (
+                  <Button onClick={openConvertPreview}>
+                    Convert to Markdown
+                  </Button>
+                ) : null}
+              <Button
+                  icon={<SaveOutlined />}
+                  type="primary"
+                  loading={save.isPending}
+                  onClick={() => save.mutate()}
+                >
+                  Save
+                </Button>
+                {!isNew && (
+                  <Button
+                    icon={<SendOutlined />}
+                    loading={publish.isPending}
+                    onClick={() => publish.mutate()}
+                  >
+                    {published ? "Unpublish" : "Publish"}
+                  </Button>
+                )}
+              </Space>
+            </div>
+
+            {!published ? (
+              <Text type={autoSaveStatus.startsWith("Autosave failed") ? "danger" : "secondary"}>
+                {autoSaveStatus}
+              </Text>
+            ) : null}
+
+            {hasMissingSnapshot ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="This imported post has no content snapshot"
+                description="The original data contains the post metadata, but no base/head/release snapshot, so there is no body content to show."
+              />
+            ) : null}
+
+            {rawType !== "markdown" ? (
+              <Alert
+                type="info"
+                showIcon
+                message={`This post was imported as ${rawType.toUpperCase()}`}
+                description="The editor shows the original source format on the left. For HTML posts, that means HTML source rather than Markdown."
+                action={isHtmlPost ? <Button size="small" onClick={openConvertPreview}>Convert</Button> : undefined}
+              />
+            ) : null}
+
           <Form.Item
             name="title"
             label="Title"
@@ -431,6 +472,7 @@ export function PostEditPage() {
           >
             <Input placeholder="An informative title" />
           </Form.Item>
+          </div>
           <MarkdownEditor initialMarkdown={markdown} onChange={handleMarkdownChange} />
         </Form>
       </Space>

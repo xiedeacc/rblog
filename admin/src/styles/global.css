@@ -418,6 +418,25 @@ body {
   line-height: 1.5;
 }
 
+.post-edit-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  gap: 1rem;
+  margin: -1rem -1rem 0;
+  padding: 1rem 1rem 0.75rem;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.post-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .halo-entity-card {
   overflow: hidden;
   border: 1px solid #e5e7eb;
@@ -730,11 +749,15 @@ body {
 }
 
 .lexical-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 15;
   display: flex;
   gap: 0.5rem;
   padding: 0.5rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   flex-wrap: wrap;
+  background: #fff;
 }
 
 .lexical-content {
@@ -761,7 +784,7 @@ body {
 .markdown-editor-shell {
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 0.5rem;
-  overflow: hidden;
+  overflow: visible;
   background: #fff;
 }
 
@@ -799,6 +822,11 @@ body {
   min-width: 0;
   border-left: 1px solid #e5e7eb;
   background: #fafafa;
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
 }
 
 .markdown-inspector__tabs {
