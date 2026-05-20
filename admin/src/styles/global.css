@@ -58,7 +58,6 @@ body {
 .console-logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
   height: 2rem;
 }
 
@@ -95,9 +94,9 @@ body {
 }
 
 .console-logo__text {
-  font-size: 1.55rem;
+  font-size: 1.45rem;
   font-weight: 800;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.03em;
   line-height: 1;
   color: #0b87fd;
 }
@@ -365,6 +364,17 @@ body {
   gap: 1rem;
 }
 
+.halo-posts-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  margin-top: -1.5rem;
+  padding-top: 1.5rem;
+  background: #eff4f9;
+  box-shadow: 0 1px 0 rgba(229, 231, 235, 0.8);
+}
+
 .halo-page-header {
   display: flex;
   align-items: center;
@@ -397,6 +407,9 @@ body {
   gap: 1rem;
   min-height: 3.65rem;
   background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 0 #e5e7eb;
   padding: 0.75rem 1rem;
 }
 
@@ -650,6 +663,12 @@ body {
 
   .app-content {
     padding: 1rem;
+  }
+
+  .halo-posts-sticky-top {
+    top: 0;
+    margin-top: -1rem;
+    padding-top: 1rem;
   }
 }
 

@@ -68,13 +68,8 @@ function activeKey(pathname: string): string {
 
 function HaloLogo() {
   return (
-    <span className="console-logo" aria-label="Halo">
-      <span className="console-logo__mark">
-        <span className="console-logo__bar console-logo__bar--left" />
-        <span className="console-logo__bar console-logo__bar--middle" />
-        <span className="console-logo__dot" />
-      </span>
-      <span className="console-logo__text">Halo</span>
+    <span className="console-logo" aria-label="rblog">
+      <span className="console-logo__text">rblog</span>
     </span>
   );
 }

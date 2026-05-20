@@ -220,34 +220,33 @@ export function PostsListPage() {
 
   return (
     <div className="halo-posts-page">
-      <header className="halo-page-header">
-        <div className="halo-page-header__title">
-          {isRecycleBin ? <DeleteOutlined /> : <BookOutlined />}
-          <Title level={3}>{isRecycleBin ? "Deleted Posts" : "Posts"}</Title>
-        </div>
-        <Space>
-          {isRecycleBin ? (
-            <Button size="small" onClick={() => navigate({ to: "/posts" })}>
-              Back
-            </Button>
-          ) : (
-            <>
-              <Button size="small" onClick={() => navigate({ to: "/posts/deleted" })}>
-                Recycle Bin
+      <div className="halo-posts-sticky-top">
+        <header className="halo-page-header">
+          <div className="halo-page-header__title">
+            {isRecycleBin ? <DeleteOutlined /> : <BookOutlined />}
+            <Title level={3}>{isRecycleBin ? "Deleted Posts" : "Posts"}</Title>
+          </div>
+          <Space>
+            {isRecycleBin ? (
+              <Button size="small" onClick={() => navigate({ to: "/posts" })}>
+                Back
               </Button>
-            </>
-          )}
-          <Button
-            type="primary"
-            icon={<PlusCircleOutlined />}
-            onClick={() => navigate({ to: "/posts/new" })}
-          >
-            New
-          </Button>
-        </Space>
-      </header>
-
-      <Card className="halo-entity-card" bodyStyle={{ padding: 0 }}>
+            ) : (
+              <>
+                <Button size="small" onClick={() => navigate({ to: "/posts/deleted" })}>
+                  Recycle Bin
+                </Button>
+              </>
+            )}
+            <Button
+              type="primary"
+              icon={<PlusCircleOutlined />}
+              onClick={() => navigate({ to: "/posts/new" })}
+            >
+              New
+            </Button>
+          </Space>
+        </header>
         <div className="halo-posts-toolbar">
           <Checkbox checked={allSelected} indeterminate={selected.length > 0 && !allSelected} onChange={(e) => setAllSelected(e.target.checked)} />
           <div className="halo-posts-toolbar__main">
@@ -343,7 +342,9 @@ export function PostsListPage() {
             onClick={() => query.refetch()}
           />
         </div>
+      </div>
 
+      <Card className="halo-entity-card" bodyStyle={{ padding: 0 }}>
         {query.isLoading ? (
           <div className="halo-posts-loading"><Spin /></div>
         ) : posts.length ? (
