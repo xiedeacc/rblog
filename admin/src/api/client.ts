@@ -67,6 +67,50 @@ export interface PostDetail {
   pinned: boolean;
   allow_comment: boolean;
   priority: number;
+  visits: number;
+}
+
+export interface PageSummary {
+  name: string;
+  title: string;
+  slug: string;
+  permalink: string;
+  publish_time: string | null;
+  published: boolean;
+  visible: string;
+  deleted: boolean;
+  creation_time: string | null;
+  last_modify_time: string | null;
+  comments_count: number;
+  visits: number;
+  image_count: number;
+  pinned: boolean;
+}
+
+export interface PageDetail {
+  name: string;
+  title: string;
+  slug: string;
+  permalink: string;
+  content_html: string;
+  raw_markdown: string;
+  raw_type: string;
+  excerpt: string;
+  publish_time: string | null;
+  published: boolean;
+  deleted: boolean;
+  visible: string;
+  owner: string | null;
+  cover: string | null;
+  template: string | null;
+  pinned: boolean;
+  allow_comment: boolean;
+  priority: number;
+  visits: number;
+  comments_count: number;
+  image_count: number;
+  creation_time: string | null;
+  last_modify_time: string | null;
 }
 
 export interface CommentItem {
@@ -354,6 +398,60 @@ export const softDeletePost = (name: string) =>
 export const purgePost = (name: string) =>
   request<void>(`/api/admin/posts/${encodeURIComponent(name)}/purge`, {
     method: "DELETE",
+  });
+
+// ────────────────────────────────────── pages
+
+export const listPages = (
+  params: {
+    offset?: number;
+    limit?: number;
+    status?: string;
+    visible?: string;
+    include_deleted?: boolean;
+  } = {},
+) => {
+  const qp = new URLSearchParams();
+  if (params.offset !== undefined) qp.set("offset", String(params.offset));
+  if (params.limit !== undefined) qp.set("limit", String(params.limit));
+  if (params.status) qp.set("status", params.status);
+  if (params.visible) qp.set("visible", params.visible);
+  if (params.include_deleted) qp.set("include_deleted", "true");
+  const qs = qp.toString();
+  return request<ListPage<PageSummary>>(`/api/admin/pages${qs ? `?${qs}` : ""}`);
+};
+
+export const fetchPage = (name: string) =>
+  request<PageDetail>(`/api/admin/pages/${encodeURIComponent(name)}`);
+
+export interface UpdatePageBody {
+  markdown: string;
+  title?: string;
+  slug?: string;
+  excerpt?: string;
+  visible?: string;
+  cover?: string;
+  template?: string;
+  priority?: number;
+  pinned?: boolean;
+  allow_comment?: boolean;
+  publish_time?: string | null;
+}
+
+export const updatePageContent = (name: string, body: UpdatePageBody) =>
+  request<PageDetail>(`/api/admin/pages/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    json: body,
+  });
+
+export const publishPage = (name: string) =>
+  request<PageDetail>(`/api/admin/pages/${encodeURIComponent(name)}/publish`, {
+    method: "POST",
+  });
+
+export const unpublishPage = (name: string) =>
+  request<PageDetail>(`/api/admin/pages/${encodeURIComponent(name)}/unpublish`, {
+    method: "POST",
   });
 
 // ────────────────────────────────────── comments

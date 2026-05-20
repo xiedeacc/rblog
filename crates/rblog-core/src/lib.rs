@@ -31,6 +31,7 @@
 pub mod bootstrap;
 pub mod comments;
 pub mod menus;
+pub mod pages;
 pub mod posts;
 pub mod settings;
 pub mod system;
@@ -43,6 +44,9 @@ mod permalink;
 pub use bootstrap::{bootstrap_system, BootstrapOptions};
 pub use comments::{CommentService, NewComment, SpamHeuristic, SpamVerdict};
 pub use menus::MenuService;
+pub use pages::{
+    PageDetail, PageListItem, PageListQuery, PageService, PageSettingsUpdate, PageStatusFilter,
+};
 pub use posts::{
     DraftPost, PostDetail, PostListItem, PostListQuery, PostService, PostSettingsUpdate,
     PostStatusFilter, PublishOptions,
@@ -60,6 +64,7 @@ use rblog_index::IndexEngine;
 /// Bundle of every long-lived service, suitable for cloning into Axum state.
 #[derive(Clone)]
 pub struct Services {
+    pub pages: Arc<PageService>,
     pub posts: Arc<PostService>,
     pub categories: Arc<CategoryService>,
     pub tags: Arc<TagService>,

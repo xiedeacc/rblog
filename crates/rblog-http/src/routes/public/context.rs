@@ -125,25 +125,38 @@ pub fn absolute_url(state: &AppState, path: &str) -> String {
 pub fn pagination(base_path: &str, page: usize, page_size: usize, total: usize) -> Value {
     let total_pages = total.div_ceil(page_size.max(1)).max(1);
     let page = page.clamp(1, total_pages);
-    let prev_url = if page > 1 {
-        Some(if page == 2 {
+    let page_url = |target: usize| {
+        if target <= 1 {
             base_path.to_owned()
+        } else if base_path == "/" {
+            format!("/page/{target}")
         } else {
-            format!("/page/{}", page - 1)
-        })
+            format!("{}/page/{target}", base_path.trim_end_matches('/'))
+        }
+    };
+    let prev_url = if page > 1 {
+        Some(page_url(page - 1))
     } else {
         None
     };
     let next_url = if page < total_pages {
-        Some(format!("/page/{}", page + 1))
+        Some(page_url(page + 1))
     } else {
         None
     };
+    let middle_page = total_pages.div_ceil(2).max(1);
     json!({
         "page": page,
         "page_size": page_size,
         "total": total,
         "total_pages": total_pages,
+        "first_page": 1,
+        "first_url": page_url(1),
+        "middle_page": middle_page,
+        "middle_url": page_url(middle_page),
+        "last_page": total_pages,
+        "last_url": page_url(total_pages),
+        "show_middle": total_pages > 2,
         "has_prev": prev_url.is_some(),
         "has_next": next_url.is_some(),
         "prev_url": prev_url,
@@ -172,5 +185,11 @@ mod tests {
         assert_eq!(p["has_next"], true);
         assert_eq!(p["prev_url"], "/");
         assert_eq!(p["next_url"], "/page/3");
+        assert_eq!(p["first_url"], "/");
+        assert_eq!(p["middle_page"], 2);
+        assert_eq!(p["middle_url"], "/page/2");
+        assert_eq!(p["last_page"], 3);
+        assert_eq!(p["last_url"], "/page/3");
+        assert_eq!(p["show_middle"], true);
     }
 }

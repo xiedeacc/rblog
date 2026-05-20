@@ -40,6 +40,7 @@ const menuGroups: ConsoleMenuGroup[] = [
     label: "Content",
     items: [
       { key: "/posts", icon: <FileTextOutlined />, label: "Posts" },
+      { key: "/pages", icon: <FolderOutlined />, label: "Pages" },
       { key: "/comments", icon: <MessageOutlined />, label: "Comments" },
       { key: "/attachments", icon: <PictureOutlined />, label: "Attachments" },
     ],

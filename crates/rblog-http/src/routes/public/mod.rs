@@ -20,6 +20,7 @@ pub mod comments;
 pub mod context;
 pub mod feed;
 pub mod home;
+pub mod page;
 pub mod plugins;
 pub mod post;
 pub mod search;
@@ -56,6 +57,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(comments::router())
         .merge(search::router())
         .merge(plugins::router())
+        .route("/:slug", get(page::detail))
         .fallback(public_not_found);
 
     // Serve `/themes/<name>/assets/...` directly from disk so themes can ship

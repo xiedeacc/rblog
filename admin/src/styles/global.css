@@ -494,6 +494,10 @@ body {
   background: #fff3c4;
 }
 
+.halo-page-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .halo-post-row__checkbox {
   display: flex;
   justify-content: center;
@@ -548,6 +552,10 @@ body {
   justify-content: end;
   color: #6b7280;
   font-size: 0.78rem;
+}
+
+.halo-page-row .halo-post-row__fields {
+  grid-template-columns: 5.5rem 5.5rem 9.5rem 2rem;
 }
 
 .halo-post-status {

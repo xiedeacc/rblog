@@ -18,6 +18,7 @@ pub mod auth;
 pub mod categories;
 pub mod comments;
 pub mod openapi;
+pub mod pages;
 pub mod plugins;
 pub mod posts;
 pub mod settings;
@@ -50,6 +51,7 @@ pub fn router(state: AppState) -> Router<AppState> {
     let private = Router::new()
         .merge(auth::private_router())
         .merge(posts::router())
+        .merge(pages::router())
         .merge(tags::router())
         .merge(categories::router())
         .merge(comments::router())

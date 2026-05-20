@@ -11,8 +11,8 @@ use rblog_store::AnyPool;
 
 use crate::indexing::resync_kind;
 use crate::{
-    CategoryService, CommentService, ConfigMapService, MenuService, PostService, ServiceError,
-    Services, SettingService, TagService, UserService,
+    CategoryService, CommentService, ConfigMapService, MenuService, PageService, PostService,
+    ServiceError, Services, SettingService, TagService, UserService,
 };
 
 /// Build the bundle of services. Constructs an [`IndexEngine`] and resyncs
@@ -30,6 +30,11 @@ pub async fn build_services(
         index.clone(),
         pipeline.clone(),
     ));
+    let pages = Arc::new(PageService::new(
+        pool.clone(),
+        index.clone(),
+        pipeline.clone(),
+    ));
     let tags = Arc::new(TagService::new(pool.clone(), index.clone()));
     let categories = Arc::new(CategoryService::new(pool.clone(), index.clone()));
     let comments = Arc::new(CommentService::new(pool.clone(), index.clone()));
@@ -42,6 +47,7 @@ pub async fn build_services(
     let settings = Arc::new(SettingService::new(pool.clone(), index.clone()));
     let configmaps = Arc::new(ConfigMapService::new(pool, index.clone()));
     Ok(Services {
+        pages,
         posts,
         categories,
         tags,

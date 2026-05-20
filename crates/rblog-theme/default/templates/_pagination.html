@@ -1,7 +1,12 @@
 {% if pagination and pagination.total_pages > 1 %}
   <nav class="pagination">
-    {% if pagination.has_prev %}<a href="{{ pagination.prev_url }}">← prev</a>{% endif %}
-    <span>Page {{ pagination.page }} of {{ pagination.total_pages }}</span>
-    {% if pagination.has_next %}<a href="{{ pagination.next_url }}">next →</a>{% endif %}
+    {% if pagination.has_prev %}<a href="{{ pagination.prev_url }}">previous</a>{% endif %}
+    <span>page</span>
+    <a href="{{ pagination.first_url }}" aria-label="Go to first page">{{ pagination.first_page }}</a>
+    {% if pagination.show_middle %}
+      <a href="{{ pagination.middle_url }}" aria-label="Go to page {{ pagination.middle_page }}">...</a>
+    {% endif %}
+    <a href="{{ pagination.last_url }}" aria-label="Go to last page">{{ pagination.last_page }}</a>
+    {% if pagination.has_next %}<a href="{{ pagination.next_url }}">next</a>{% endif %}
   </nav>
 {% endif %}

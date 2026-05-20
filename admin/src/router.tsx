@@ -11,6 +11,8 @@ import { BootstrapPage } from "@/pages/BootstrapPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { PostsListPage } from "@/pages/PostsListPage";
 import { PostEditPage } from "@/pages/PostEditPage";
+import { PagesListPage } from "@/pages/PagesListPage";
+import { PageEditPage } from "@/pages/PageEditPage";
 import { CommentsPage } from "@/pages/CommentsPage";
 import { UsersPage } from "@/pages/UsersPage";
 import { AttachmentsPage } from "@/pages/AttachmentsPage";
@@ -103,6 +105,18 @@ const postNewRoute = createRoute({
   validateSearch: validatePostsSearch,
   component: PostEditPage,
 });
+const pagesListRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/pages",
+  validateSearch: validatePostsSearch,
+  component: PagesListPage,
+});
+const pageEditRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/pages/$name",
+  validateSearch: validatePostsSearch,
+  component: PageEditPage,
+});
 const commentsRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/comments",
@@ -138,6 +152,8 @@ const routeTree = rootRoute.addChildren([
     postsDeletedRoute,
     postNewRoute,
     postEditRoute,
+    pagesListRoute,
+    pageEditRoute,
     commentsRoute,
     usersRoute,
     attachmentsRoute,
