@@ -283,9 +283,14 @@ a {
 
 .earth-sidebar {
   grid-column: 3;
+  position: sticky;
+  top: 78px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  padding-bottom: 8px;
 }
 
 .earth-card {
@@ -557,6 +562,28 @@ a {
   background: rgba(246, 248, 251, .92);
   backdrop-filter: blur(8px);
   font-size: 13px;
+}
+
+.pagination a {
+  color: #111827;
+  text-decoration: none;
+}
+
+.pagination-page-select {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.pagination-page-select select {
+  min-width: 72px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  padding: .45rem 2rem .45rem .8rem;
+  color: #111827;
+  font: inherit;
+  cursor: pointer;
 }
 
 .page,
@@ -967,6 +994,9 @@ a {
   }
 
   .earth-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
     padding-top: 0;
   }
 }

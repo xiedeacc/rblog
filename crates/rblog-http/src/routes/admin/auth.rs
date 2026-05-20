@@ -105,6 +105,8 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoR
     let removal = Cookie::build((cookie_name, String::new()))
         .path("/")
         .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(state.config.session.secure)
         .max_age(time::Duration::seconds(0))
         .build();
     (StatusCode::NO_CONTENT, jar.add(removal))

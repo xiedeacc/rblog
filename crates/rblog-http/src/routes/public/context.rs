@@ -145,11 +145,21 @@ pub fn pagination(base_path: &str, page: usize, page_size: usize, total: usize) 
         None
     };
     let middle_page = total_pages.div_ceil(2).max(1);
+    let pages = (1..=total_pages)
+        .map(|target| {
+            json!({
+                "page": target,
+                "url": page_url(target),
+                "current": target == page,
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "page": page,
         "page_size": page_size,
         "total": total,
         "total_pages": total_pages,
+        "pages": pages,
         "first_page": 1,
         "first_url": page_url(1),
         "middle_page": middle_page,
@@ -191,5 +201,9 @@ mod tests {
         assert_eq!(p["last_page"], 3);
         assert_eq!(p["last_url"], "/page/3");
         assert_eq!(p["show_middle"], true);
+        assert_eq!(p["pages"].as_array().unwrap().len(), 3);
+        assert_eq!(p["pages"][0]["url"], "/");
+        assert_eq!(p["pages"][1]["current"], true);
+        assert_eq!(p["pages"][2]["url"], "/page/3");
     }
 }

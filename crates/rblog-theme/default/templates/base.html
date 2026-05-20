@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260520-edit-button-offset" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260520-sidebar-sticky" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
