@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
 import { App, Button, Dropdown, Space, Tooltip } from "antd";
 import {
   BoldOutlined,
@@ -28,6 +28,7 @@ import { uploadAttachment } from "@/api/client";
 interface Props {
   initialMarkdown: string;
   onChange: (markdown: string) => void;
+  stickyHeader?: ReactNode;
 }
 
 interface HeadingItem {
@@ -46,22 +47,47 @@ function escapeRegExp(value: string): string {
 }
 
 function slugify(value: string): string {
-  return value
+  const slug = value
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .replace(/\s+/g, "-");
+  return slug || "section";
 }
 
 function extractHeadings(markdown: string): HeadingItem[] {
-  return [...markdown.matchAll(/^(#{1,3})\s+(.+)$/gm)].map((match) => {
-    const title = (match[2] ?? "").replace(/[*_`]/g, "").trim();
-    return {
-      depth: (match[1] ?? "").length,
+  const content = markdown
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/~~~[\s\S]*?~~~/g, "");
+  const headings: HeadingItem[] = [];
+  const seen = new Map<string, number>();
+  const addHeading = (depth: number, rawTitle: string) => {
+    const title = rawTitle
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/[*_`]/g, "")
+      .trim();
+    if (!title) return;
+    const baseId = slugify(title);
+    const count = seen.get(baseId) ?? 0;
+    seen.set(baseId, count + 1);
+    headings.push({
+      depth,
       title,
-      id: slugify(title),
-    };
-  });
+      id: count === 0 ? baseId : `${baseId}-${count + 1}`,
+    });
+  };
+
+  for (const match of content.matchAll(/^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?$/gm)) {
+    addHeading((match[1] ?? "").length, match[2] ?? "");
+  }
+  for (const match of content.matchAll(/<h([1-6])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi)) {
+    addHeading(Number(match[1]), match[2] ?? "");
+  }
+  return headings.sort((a, b) => content.indexOf(a.title) - content.indexOf(b.title));
 }
 
 function renderMath(markdown: string): string {
@@ -140,7 +166,7 @@ function imageMarkdown(file: File, url: string): string {
   return `![${alt}](${url})`;
 }
 
-export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
+export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Props) {
   const { message } = App.useApp();
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [preview, setPreview] = useState(true);
@@ -300,79 +326,81 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
 
   return (
     <div className="markdown-editor-shell">
-      <div className="lexical-toolbar">
-        <Space size={4} wrap>
-          <Tooltip title="Undo"><Button size="small" icon={<UndoOutlined />} onClick={() => document.execCommand("undo")} /></Tooltip>
-          <Tooltip title="Redo"><Button size="small" icon={<RedoOutlined />} onClick={() => document.execCommand("redo")} /></Tooltip>
-          <Tooltip title="Bold"><Button size="small" icon={<BoldOutlined />} onClick={() => insert("**", "**", "bold")} /></Tooltip>
-          <Tooltip title="Italic"><Button size="small" icon={<ItalicOutlined />} onClick={() => insert("_", "_", "italic")} /></Tooltip>
-          <Tooltip title="Underline"><Button size="small" onClick={() => insert("<u>", "</u>", "underline")}>U</Button></Tooltip>
-          <Tooltip title="Strikethrough"><Button size="small" icon={<StrikethroughOutlined />} onClick={() => insert("~~", "~~", "deleted")} /></Tooltip>
-          <Tooltip title="Highlight"><Button size="small" onClick={() => insert("<mark>", "</mark>", "mark")}>Mark</Button></Tooltip>
-          <Tooltip title="Inline code"><Button size="small" icon={<CodeOutlined />} onClick={() => insert("`", "`", "code")} /></Tooltip>
-          <Tooltip title="Quote"><Button size="small" onClick={() => applyLinePrefix("> ")}>Quote</Button></Tooltip>
-          <Dropdown
-            menu={{
-              items: [
-                { key: "h1", label: "Heading 1", onClick: () => applyLinePrefix("# ") },
-                { key: "h2", label: "Heading 2", onClick: () => applyLinePrefix("## ") },
-                { key: "h3", label: "Heading 3", onClick: () => applyLinePrefix("### ") },
-                { key: "hr", label: "Divider", onClick: () => insertBlock("---") },
-              ],
+      <div className="markdown-editor-sticky-top">
+        {stickyHeader}
+        <div className="lexical-toolbar">
+          <Space size={4} wrap>
+            <Tooltip title="Undo"><Button size="small" icon={<UndoOutlined />} onClick={() => document.execCommand("undo")} /></Tooltip>
+            <Tooltip title="Redo"><Button size="small" icon={<RedoOutlined />} onClick={() => document.execCommand("redo")} /></Tooltip>
+            <Tooltip title="Bold"><Button size="small" icon={<BoldOutlined />} onClick={() => insert("**", "**", "bold")} /></Tooltip>
+            <Tooltip title="Italic"><Button size="small" icon={<ItalicOutlined />} onClick={() => insert("_", "_", "italic")} /></Tooltip>
+            <Tooltip title="Underline"><Button size="small" onClick={() => insert("<u>", "</u>", "underline")}>U</Button></Tooltip>
+            <Tooltip title="Strikethrough"><Button size="small" icon={<StrikethroughOutlined />} onClick={() => insert("~~", "~~", "deleted")} /></Tooltip>
+            <Tooltip title="Highlight"><Button size="small" onClick={() => insert("<mark>", "</mark>", "mark")}>Mark</Button></Tooltip>
+            <Tooltip title="Inline code"><Button size="small" icon={<CodeOutlined />} onClick={() => insert("`", "`", "code")} /></Tooltip>
+            <Tooltip title="Quote"><Button size="small" onClick={() => applyLinePrefix("> ")}>Quote</Button></Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: "h1", label: "Heading 1", onClick: () => applyLinePrefix("# ") },
+                  { key: "h2", label: "Heading 2", onClick: () => applyLinePrefix("## ") },
+                  { key: "h3", label: "Heading 3", onClick: () => applyLinePrefix("### ") },
+                  { key: "hr", label: "Divider", onClick: () => insertBlock("---") },
+                ],
+              }}
+            >
+              <Button size="small">H</Button>
+            </Dropdown>
+            <Tooltip title="Bullet list"><Button size="small" icon={<UnorderedListOutlined />} onClick={() => insert("- ", "", "list item")} /></Tooltip>
+            <Tooltip title="Numbered list"><Button size="small" icon={<OrderedListOutlined />} onClick={() => insert("1. ", "", "list item")} /></Tooltip>
+            <Tooltip title="Link"><Button size="small" icon={<LinkOutlined />} onClick={() => insert("[", "](https://)", "link text")} /></Tooltip>
+            <Tooltip title="Image"><Button size="small" icon={<PictureOutlined />} onClick={() => imageInput.current?.click()} /></Tooltip>
+            <Tooltip title="Table"><Button size="small" icon={<TableOutlined />} onClick={() => insert("\n| Column | Column |\n| --- | --- |\n| ", " | value |\n", "value")} /></Tooltip>
+            <Tooltip title="Clear format"><Button size="small" icon={<ClearOutlined />} onClick={clearFormat} /></Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: "attachment", label: "Attachment", icon: <UploadOutlined />, onClick: () => attachmentInput.current?.click() },
+                  { key: "table", label: "Add table", onClick: () => insertBlock("| Column | Column |\n| --- | --- |\n| value | value |") },
+                  { key: "video", label: "Video", icon: <VideoCameraOutlined />, onClick: () => insertBlock('<video controls src="https://example.com/video.mp4"></video>') },
+                  { key: "audio", label: "Audio", icon: <AudioOutlined />, onClick: () => insertBlock('<audio controls src="https://example.com/audio.mp3"></audio>') },
+                  { key: "iframe", label: "Iframe", onClick: () => insertBlock('<iframe src="https://example.com" width="100%" height="360"></iframe>') },
+                  { key: "detail", label: "Detail block", onClick: () => insert("\n<details>\n<summary>", "</summary>\n\nDetail content\n</details>\n", "Title") },
+                  { key: "columns", label: "Column Card", onClick: () => insertBlock('<div class="columns">\n\n<div>\n\nColumn 1\n\n</div>\n\n<div>\n\nColumn 2\n\n</div>\n\n</div>') },
+                  { key: "mermaid", label: "Mermaid", onClick: () => insert("\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n") },
+                  { key: "math", label: "Math formula", onClick: () => insert("\n$$\n", "\n$$\n", "E = mc^2") },
+                  { key: "code", label: "Code block", onClick: () => insert("\n```text\n", "\n```\n", "code") },
+                ],
+              }}
+            >
+              <Button size="small" icon={<PlusOutlined />}>Insert</Button>
+            </Dropdown>
+            <Button size="small" icon={<EyeOutlined />} onClick={() => setPreview((value) => !value)}>
+              {preview ? "Hide preview" : "Preview"}
+            </Button>
+          </Space>
+          <input
+            ref={imageInput}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(event) => {
+              void uploadFiles([...(event.target.files ?? [])], "image");
+              event.currentTarget.value = "";
             }}
-          >
-            <Button size="small">H</Button>
-          </Dropdown>
-          <Tooltip title="Bullet list"><Button size="small" icon={<UnorderedListOutlined />} onClick={() => insert("- ", "", "list item")} /></Tooltip>
-          <Tooltip title="Numbered list"><Button size="small" icon={<OrderedListOutlined />} onClick={() => insert("1. ", "", "list item")} /></Tooltip>
-          <Tooltip title="Link"><Button size="small" icon={<LinkOutlined />} onClick={() => insert("[", "](https://)", "link text")} /></Tooltip>
-          <Tooltip title="Image"><Button size="small" icon={<PictureOutlined />} onClick={() => imageInput.current?.click()} /></Tooltip>
-          <Tooltip title="Table"><Button size="small" icon={<TableOutlined />} onClick={() => insert("\n| Column | Column |\n| --- | --- |\n| ", " | value |\n", "value")} /></Tooltip>
-          <Tooltip title="Clear format"><Button size="small" icon={<ClearOutlined />} onClick={clearFormat} /></Tooltip>
-          <Dropdown
-            menu={{
-              items: [
-                { key: "attachment", label: "Attachment", icon: <UploadOutlined />, onClick: () => attachmentInput.current?.click() },
-                { key: "table", label: "Add table", onClick: () => insertBlock("| Column | Column |\n| --- | --- |\n| value | value |") },
-                { key: "video", label: "Video", icon: <VideoCameraOutlined />, onClick: () => insertBlock('<video controls src="https://example.com/video.mp4"></video>') },
-                { key: "audio", label: "Audio", icon: <AudioOutlined />, onClick: () => insertBlock('<audio controls src="https://example.com/audio.mp3"></audio>') },
-                { key: "iframe", label: "Iframe", onClick: () => insertBlock('<iframe src="https://example.com" width="100%" height="360"></iframe>') },
-                { key: "toc", label: "TOC", onClick: () => insert("\n[[toc]]\n") },
-                { key: "detail", label: "Detail block", onClick: () => insert("\n<details>\n<summary>", "</summary>\n\nDetail content\n</details>\n", "Title") },
-                { key: "columns", label: "Column Card", onClick: () => insertBlock('<div class="columns">\n\n<div>\n\nColumn 1\n\n</div>\n\n<div>\n\nColumn 2\n\n</div>\n\n</div>') },
-                { key: "mermaid", label: "Mermaid", onClick: () => insert("\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n") },
-                { key: "math", label: "Math formula", onClick: () => insert("\n$$\n", "\n$$\n", "E = mc^2") },
-                { key: "code", label: "Code block", onClick: () => insert("\n```text\n", "\n```\n", "code") },
-              ],
+          />
+          <input
+            ref={attachmentInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              void uploadFiles([...(event.target.files ?? [])], "attachment");
+              event.currentTarget.value = "";
             }}
-          >
-            <Button size="small" icon={<PlusOutlined />}>Insert</Button>
-          </Dropdown>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setPreview((value) => !value)}>
-            {preview ? "Hide preview" : "Preview"}
-          </Button>
-        </Space>
-        <input
-          ref={imageInput}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onChange={(event) => {
-            void uploadFiles([...(event.target.files ?? [])], "image");
-            event.currentTarget.value = "";
-          }}
-        />
-        <input
-          ref={attachmentInput}
-          type="file"
-          multiple
-          hidden
-          onChange={(event) => {
-            void uploadFiles([...(event.target.files ?? [])], "attachment");
-            event.currentTarget.value = "";
-          }}
-        />
+          />
+        </div>
       </div>
       <div className={`markdown-editor-grid${preview ? "" : " markdown-editor-grid--single"}`}>
         <textarea
