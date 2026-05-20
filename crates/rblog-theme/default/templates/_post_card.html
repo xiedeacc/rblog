@@ -7,5 +7,6 @@
     <span class="earth-author-icon"><span class="i-tabler-world"></span></span>
     <strong>xiedeacc</strong>
     <span>发布于 <time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time></span>
+    <span>阅读 {{ post.visits | default(0) }}</span>
   </footer>
 </article>

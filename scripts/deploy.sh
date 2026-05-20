@@ -106,9 +106,10 @@ build_artifacts() {
   (cd "$ROOT_DIR" && cargo build --release)
 
   log "staging artifacts"
-  mkdir -p "$BUILD_DIR/bin/admin" "$BUILD_DIR/conf"
+  mkdir -p "$BUILD_DIR/bin/admin" "$BUILD_DIR/conf" "$BUILD_DIR/data/themes/default"
   cp "$ROOT_DIR/target/release/${APP_NAME}" "$BUILD_DIR/bin/${APP_NAME}"
   cp -R "$ROOT_DIR/admin/dist/." "$BUILD_DIR/bin/admin/"
+  cp -R "$ROOT_DIR/crates/rblog-theme/default/." "$BUILD_DIR/data/themes/default/"
   write_config "$BUILD_DIR/conf/rblog.toml"
 }
 
@@ -150,6 +151,7 @@ deploy_local() {
     "$DEST_DIR/data/plugins"
   sudo rsync -a --delete "$BUILD_DIR/bin/" "$DEST_DIR/bin/"
   sudo rsync -a "$BUILD_DIR/conf/" "$DEST_DIR/conf/"
+  sudo rsync -a --delete "$BUILD_DIR/data/themes/" "$DEST_DIR/data/themes/"
   sudo cp "$service_file" "/etc/systemd/system/${SERVICE_NAME}.service"
   sudo chown -R "$run_user:$run_user" "$DEST_DIR"
   sudo systemctl daemon-reload
@@ -171,6 +173,7 @@ deploy_remote() {
   run_remote "$host" "sudo mkdir -p '$DEST_DIR/bin' '$DEST_DIR/conf' '$DEST_DIR/logs' '$DEST_DIR/data/themes' '$DEST_DIR/data/uploads' '$DEST_DIR/data/search-index' '$DEST_DIR/data/plugins' && sudo chown -R '$remote_user:$remote_user' '$DEST_DIR'"
   rsync -az --delete "$BUILD_DIR/bin/" "$host:$DEST_DIR/bin/"
   rsync -az "$BUILD_DIR/conf/" "$host:$DEST_DIR/conf/"
+  rsync -az --delete "$BUILD_DIR/data/themes/" "$host:$DEST_DIR/data/themes/"
   sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}.service" <"$service_file"
   run_remote "$host" "sudo chown -R '$remote_user:$remote_user' '$DEST_DIR' && sudo systemctl daemon-reload && sudo systemctl enable '$SERVICE_NAME' && sudo systemctl restart '$SERVICE_NAME' && sudo systemctl --no-pager --full status '$SERVICE_NAME'"
 }

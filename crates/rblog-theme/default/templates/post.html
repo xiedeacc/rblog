@@ -6,6 +6,7 @@
       <h1>{{ post.title }}</h1>
       <p class="post-meta">
         <time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time>
+        · 阅读 {{ post.visits | default(0) }}
         {% if post.reading_time_minutes %} · {{ post.reading_time_minutes }} min read{% endif %}
         {% if post.tags %}
           ·
@@ -61,7 +62,7 @@
     </div>
 
     <form class="comment-form" data-comment-form data-post-slug="{{ post.slug }}">
-      <h3>发表评论</h3>
+      <h3 data-comment-title>发表评论</h3>
       <div class="comment-form__row">
         <label>
           昵称
@@ -80,35 +81,11 @@
         Website
         <input name="website" tabindex="-1" autocomplete="off" />
       </label>
-      <button type="submit">提交评论</button>
-      <p class="comment-form__status" data-comment-status hidden></p>
-    </form>
-
-    <form class="comment-form comment-form--reply" data-reply-form hidden>
-      <h3>回复 <span data-reply-target></span></h3>
-      <div class="comment-form__row">
-        <label>
-          昵称
-          <input name="display_name" autocomplete="name" required />
-        </label>
-        <label>
-          邮箱
-          <input name="email" type="email" autocomplete="email" required />
-        </label>
-      </div>
-      <label class="comment-form__body">
-        回复内容
-        <textarea name="raw" rows="4" required></textarea>
-      </label>
-      <label class="comment-form__website">
-        Website
-        <input name="website" tabindex="-1" autocomplete="off" />
-      </label>
       <div class="comment-form__actions">
-        <button type="submit">提交回复</button>
-        <button type="button" data-reply-cancel>取消</button>
+        <button type="submit" data-comment-submit>提交评论</button>
+        <button type="button" data-reply-cancel hidden>取消回复</button>
       </div>
-      <p class="comment-form__status" data-reply-status hidden></p>
+      <p class="comment-form__status" data-comment-status hidden></p>
     </form>
   </section>
 
@@ -117,15 +94,30 @@
       const form = document.querySelector("[data-comment-form]");
       if (!form) return;
       const status = form.querySelector("[data-comment-status]");
+      const title = form.querySelector("[data-comment-title]");
+      const submitButton = form.querySelector("[data-comment-submit]");
+      const cancelReply = form.querySelector("[data-reply-cancel]");
+      let replyTo = "";
+      const resetReplyMode = () => {
+        replyTo = "";
+        title.textContent = "发表评论";
+        submitButton.textContent = "提交评论";
+        cancelReply.hidden = true;
+      };
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         status.hidden = false;
         status.textContent = "正在提交...";
         const body = Object.fromEntries(new FormData(form).entries());
-        body.subject_kind = "Post";
-        body.subject_slug = form.dataset.postSlug;
+        let url = "/api/comments";
+        if (replyTo) {
+          url = `/api/comments/${encodeURIComponent(replyTo)}/replies`;
+        } else {
+          body.subject_kind = "Post";
+          body.subject_slug = form.dataset.postSlug;
+        }
         try {
-          const response = await fetch("/api/comments", {
+          const response = await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(body),
@@ -135,54 +127,28 @@
             throw new Error(payload?.error?.message || payload?.message || "评论提交失败");
           }
           status.textContent = payload.approved
-            ? "评论已发布，刷新后可见。"
-            : "评论已提交，等待管理员审核。";
+            ? (replyTo ? "回复已发布，刷新后可见。" : "评论已发布，刷新后可见。")
+            : (replyTo ? "回复已提交，等待管理员审核。" : "评论已提交，等待管理员审核。");
           form.reset();
+          resetReplyMode();
         } catch (error) {
-          status.textContent = error.message || "评论提交失败";
+          status.textContent = error.message || (replyTo ? "回复提交失败" : "评论提交失败");
         }
       });
-      const replyForm = document.querySelector("[data-reply-form]");
-      const replyStatus = replyForm?.querySelector("[data-reply-status]");
-      const replyTarget = replyForm?.querySelector("[data-reply-target]");
-      let replyTo = "";
       document.querySelectorAll("[data-reply-to]").forEach((button) => {
         button.addEventListener("click", () => {
           replyTo = button.dataset.replyTo || "";
-          replyTarget.textContent = button.dataset.replyAuthor || "";
-          replyForm.hidden = false;
-          replyForm.scrollIntoView({ behavior: "smooth", block: "center" });
-          replyForm.querySelector("textarea").focus();
+          title.textContent = `回复 ${button.dataset.replyAuthor || ""}`;
+          submitButton.textContent = "提交回复";
+          cancelReply.hidden = false;
+          status.hidden = true;
+          form.scrollIntoView({ behavior: "smooth", block: "center" });
+          form.querySelector("textarea").focus();
         });
       });
-      replyForm?.querySelector("[data-reply-cancel]")?.addEventListener("click", () => {
-        replyTo = "";
-        replyForm.hidden = true;
-        replyStatus.hidden = true;
-      });
-      replyForm?.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!replyTo) return;
-        replyStatus.hidden = false;
-        replyStatus.textContent = "正在提交...";
-        const body = Object.fromEntries(new FormData(replyForm).entries());
-        try {
-          const response = await fetch(`/api/comments/${encodeURIComponent(replyTo)}/replies`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(payload?.error?.message || payload?.message || "回复提交失败");
-          }
-          replyStatus.textContent = payload.approved
-            ? "回复已发布，刷新后可见。"
-            : "回复已提交，等待管理员审核。";
-          replyForm.reset();
-        } catch (error) {
-          replyStatus.textContent = error.message || "回复提交失败";
-        }
+      cancelReply.addEventListener("click", () => {
+        resetReplyMode();
+        status.hidden = true;
       });
     })();
   </script>

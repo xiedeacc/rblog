@@ -588,6 +588,13 @@ impl PostService {
             .label(DELETED_LABEL)
             .is_some_and(|v| v == "true")
             || post.metadata.is_deleted();
+        let visits = post
+            .metadata
+            .annotation("content.halo.run/stats")
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+            .and_then(|stats| stats.get("visit").and_then(serde_json::Value::as_i64))
+            .and_then(|visit| i32::try_from(visit).ok())
+            .unwrap_or_default();
         Ok(PostDetail {
             name: post.metadata.name().to_owned(),
             title: spec.title,
@@ -608,6 +615,7 @@ impl PostService {
             pinned: spec.pinned,
             allow_comment: spec.allow_comment,
             priority: spec.priority,
+            visits,
             metadata: post.metadata,
         })
     }
@@ -822,6 +830,7 @@ pub struct PostDetail {
     pub pinned: bool,
     pub allow_comment: bool,
     pub priority: i32,
+    pub visits: i32,
     #[serde(skip)]
     pub metadata: Metadata,
 }

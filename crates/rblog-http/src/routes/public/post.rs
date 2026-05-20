@@ -27,6 +27,7 @@ pub async fn detail(
         "publish_time": detail.publish_time,
         "excerpt": detail.excerpt,
         "content": detail.content_html,
+        "visits": detail.visits,
         "cover": detail.cover,
         "tags": tag_list(&state, &detail.tags),
         "categories": category_list(&state, &detail.categories),
