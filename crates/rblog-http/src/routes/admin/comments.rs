@@ -21,7 +21,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/admin/replies/:name/approve", post(approve_reply))
         .route("/api/admin/replies/:name/hide", post(hide_reply))
         .route("/api/admin/replies/:name/show", post(show_reply))
-        .route("/api/admin/replies/:name", axum::routing::delete(delete_reply))
+        .route(
+            "/api/admin/replies/:name",
+            axum::routing::delete(delete_reply),
+        )
 }
 
 #[derive(Debug, Serialize, ToSchema)]

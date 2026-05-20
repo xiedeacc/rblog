@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use rblog_content::content::{Excerpt, Post, PostSpec, Snapshot, SnapshotSpec, Visible};
+use rblog_content::content::{
+    Comment, Excerpt, Post, PostSpec, PostStatus, Snapshot, SnapshotSpec, Visible,
+};
 use rblog_content::content_wrapper::{compose_snapshot, KEEP_RAW_ANNOTATION};
 use rblog_content::infra::Ref;
 use rblog_content::render::{MarkdownPipeline, RenderOptions};
@@ -50,6 +52,11 @@ pub const DELETED_LABEL: &str = "content.halo.run/deleted";
 /// Annotation pointing at the post's last released snapshot.
 pub const LAST_RELEASED_ANNO: &str = "content.halo.run/last-released-snapshot";
 
+const STATS_ANNO: &str = "content.halo.run/stats";
+const APPROVED_LABEL: &str = "content.halo.run/approved";
+const SUBJECT_KIND_LABEL: &str = "content.halo.run/subject-kind";
+const SUBJECT_NAME_LABEL: &str = "content.halo.run/subject-name";
+
 #[derive(Clone)]
 pub struct PostService {
     pool: AnyPool,
@@ -66,6 +73,28 @@ impl PostService {
         }
     }
 
+    fn ensure_slug_available(
+        &self,
+        slug: &str,
+        current_name: Option<&str>,
+    ) -> Result<(), ServiceError> {
+        let opts = ListOptions::default()
+            .with_field(FieldSelector::Equals {
+                path: "spec.slug".to_owned(),
+                value: serde_json::Value::String(slug.to_owned()),
+            })
+            .paged(0, 2);
+        let res = self.index.list(&Post::gvk(), &opts)?;
+        let conflict_exists = res
+            .items
+            .iter()
+            .any(|entry| current_name != Some(entry.name.as_str()));
+        if conflict_exists {
+            return Err(conflict("Post slug", slug));
+        }
+        Ok(())
+    }
+
     /// Create a draft post. Generates a base snapshot from `draft.markdown`
     /// and ties it to the new post's `spec.{base,head}Snapshot` pointers.
     pub async fn draft(&self, draft: DraftPost) -> Result<PostDetail, ServiceError> {
@@ -75,10 +104,12 @@ impl PostService {
         if draft.slug.trim().is_empty() {
             return Err(ServiceError::Validation("slug must not be empty".into()));
         }
+        self.ensure_slug_available(&draft.slug, None)?;
         let store = TypedStore::new(&self.pool);
         if store.fetch::<Post>(&draft.name).await?.is_some() {
             return Err(conflict("Post", draft.name));
         }
+        let now = Utc::now();
         let rendered = self
             .pipeline
             .render(&draft.markdown, &RenderOptions::default())
@@ -90,7 +121,7 @@ impl PostService {
             raw_patch: Some(draft.markdown.clone()),
             content_patch: Some(rendered.html.clone()),
             parent_snapshot_name: None,
-            last_modify_time: Some(Utc::now()),
+            last_modify_time: Some(now),
             owner: draft.owner.clone(),
             contributors: None,
         });
@@ -127,8 +158,13 @@ impl PostService {
             tags: draft.tags.clone(),
             html_metas: None,
         });
+        post.metadata.creation_timestamp = Some(now);
         post.metadata.set_label(PUBLISHED_LABEL, "false");
         post.metadata.set_label(DELETED_LABEL, "false");
+        post.status = Some(PostStatus {
+            last_modify_time: Some(now),
+            ..PostStatus::default()
+        });
         let saved_post = store.create(&post).await?;
         upsert(&self.index, &saved_post)?;
         self.build_detail(
@@ -136,6 +172,7 @@ impl PostService {
             &rendered.html,
             &rendered.excerpt,
             &draft.markdown,
+            "markdown",
         )
     }
 
@@ -153,43 +190,69 @@ impl PostService {
             .fetch::<Post>(name)
             .await?
             .ok_or_else(|| not_found("Post", name))?;
-        let base_name = post
-            .spec
-            .as_ref()
-            .and_then(|s| s.base_snapshot.clone())
-            .ok_or_else(|| {
-                ServiceError::Internal(format!("post `{name}` missing base snapshot"))
-            })?;
-        let mut base: Snapshot = store
-            .fetch::<Snapshot>(&base_name)
-            .await?
-            .ok_or_else(|| not_found("Snapshot", &base_name))?;
-
         let rendered = self
             .pipeline
             .render(markdown, &RenderOptions::default())
             .map_err(|e| ServiceError::Content(e.to_string()))?;
+        let now = Utc::now();
 
-        // Simplest model for v1: replace the base snapshot body in place.
-        // The history is reconstructable later via a separate `Snapshot`
-        // history pipe (out of scope for this commit).
-        if let Some(spec) = base.spec.as_mut() {
-            spec.raw_patch = Some(markdown.to_owned());
-            spec.content_patch = Some(rendered.html.clone());
-            spec.last_modify_time = Some(Utc::now());
-            let mut contributors = spec.contributors.clone().unwrap_or_default();
-            contributors.insert(author.to_owned());
-            spec.contributors = Some(contributors);
-        }
-        let saved_base = store.update(&base).await?;
-        upsert(&self.index, &saved_base)?;
+        let base_name =
+            if let Some(base_name) = post.spec.as_ref().and_then(|s| s.base_snapshot.clone()) {
+                let mut base: Snapshot = store
+                    .fetch::<Snapshot>(&base_name)
+                    .await?
+                    .ok_or_else(|| not_found("Snapshot", &base_name))?;
+
+                // Simplest model for v1: replace the base snapshot body in place.
+                // The history is reconstructable later via a separate `Snapshot`
+                // history pipe (out of scope for this commit).
+                if let Some(spec) = base.spec.as_mut() {
+                    spec.raw_patch = Some(markdown.to_owned());
+                    spec.content_patch = Some(rendered.html.clone());
+                    spec.last_modify_time = Some(now);
+                    let mut contributors = spec.contributors.clone().unwrap_or_default();
+                    contributors.insert(author.to_owned());
+                    spec.contributors = Some(contributors);
+                }
+                let saved_base = store.update(&base).await?;
+                upsert(&self.index, &saved_base)?;
+                base_name
+            } else {
+                let snapshot_name = Uuid::new_v4().to_string();
+                let mut snapshot = Snapshot::new(&snapshot_name).with_spec(SnapshotSpec {
+                    subject_ref: Ref::of_gvk(name, &Post::gvk()),
+                    raw_type: "markdown".to_owned(),
+                    raw_patch: Some(markdown.to_owned()),
+                    content_patch: Some(rendered.html.clone()),
+                    parent_snapshot_name: None,
+                    last_modify_time: Some(now),
+                    owner: author.to_owned(),
+                    contributors: None,
+                });
+                snapshot
+                    .metadata
+                    .set_annotation(KEEP_RAW_ANNOTATION, "true");
+                let saved_snapshot = store.create(&snapshot).await?;
+                upsert(&self.index, &saved_snapshot)?;
+                snapshot_name
+            };
 
         if let Some(spec) = post.spec.as_mut() {
+            spec.base_snapshot.get_or_insert_with(|| base_name.clone());
             spec.head_snapshot = Some(base_name);
         }
+        post.status
+            .get_or_insert_with(PostStatus::default)
+            .last_modify_time = Some(now);
         let saved_post = store.update(&post).await?;
         upsert(&self.index, &saved_post)?;
-        self.build_detail(saved_post, &rendered.html, &rendered.excerpt, markdown)
+        self.build_detail(
+            saved_post,
+            &rendered.html,
+            &rendered.excerpt,
+            markdown,
+            "markdown",
+        )
     }
 
     pub async fn update_settings(
@@ -213,6 +276,7 @@ impl PostService {
                 if slug.trim().is_empty() {
                     return Err(ServiceError::Validation("slug must not be empty".into()));
                 }
+                self.ensure_slug_available(&slug, Some(name))?;
                 spec.slug = slug;
             }
             if let Some(excerpt) = settings.excerpt {
@@ -253,9 +317,38 @@ impl PostService {
                 spec.publish_time = publish_time;
             }
         }
+        post.status
+            .get_or_insert_with(PostStatus::default)
+            .last_modify_time = Some(Utc::now());
         let saved = store.update(&post).await?;
         upsert(&self.index, &saved)?;
         self.detail_from_store(saved.metadata.name()).await
+    }
+
+    pub async fn increment_visit(&self, name: &str) -> Result<i32, ServiceError> {
+        let store = TypedStore::new(&self.pool);
+        let mut post: Post = store
+            .fetch::<Post>(name)
+            .await?
+            .ok_or_else(|| not_found("Post", name))?;
+        let next = visits_from_post(&post).saturating_add(1);
+        let mut stats = post
+            .metadata
+            .annotation(STATS_ANNO)
+            .and_then(|raw| {
+                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(raw).ok()
+            })
+            .unwrap_or_default();
+        stats.insert(
+            "visit".to_owned(),
+            serde_json::Value::Number(serde_json::Number::from(next)),
+        );
+        post.metadata
+            .set_annotation(STATS_ANNO, serde_json::Value::Object(stats).to_string());
+        let saved = store.update(&post).await?;
+        upsert(&self.index, &saved)?;
+        i32::try_from(next)
+            .map_err(|e| ServiceError::Internal(format!("visit count overflow: {e}")))
     }
 
     /// Mark a post as published. Sets the `release_snapshot` pointer to the
@@ -377,17 +470,23 @@ impl PostService {
             .fetch::<Post>(name)
             .await?
             .ok_or_else(|| not_found("Post", name))?;
-        // Best-effort: remove every snapshot belonging to this post.
-        let snaps: Vec<Snapshot> = store.list::<Snapshot>().await?;
-        for snap in snaps {
-            if snap
-                .spec
-                .as_ref()
-                .is_some_and(|s| s.subject_ref.kind == "Post" && s.subject_ref.name == name)
-            {
-                let _ = store.delete(&snap).await;
-                remove::<Snapshot>(&self.index, snap.metadata.name());
+        let snaps = self.index.list(
+            &Snapshot::gvk(),
+            &ListOptions::default()
+                .with_field(FieldSelector::Equals {
+                    path: "spec.subjectRef.kind".to_owned(),
+                    value: serde_json::Value::String("Post".to_owned()),
+                })
+                .with_field(FieldSelector::Equals {
+                    path: "spec.subjectRef.name".to_owned(),
+                    value: serde_json::Value::String(name.to_owned()),
+                }),
+        )?;
+        for snap in snaps.items {
+            if let Some(snapshot) = store.fetch::<Snapshot>(&snap.name).await? {
+                let _ = store.delete(&snapshot).await;
             }
+            remove::<Snapshot>(&self.index, &snap.name);
         }
         store.delete(&post).await?;
         remove::<Post>(&self.index, name);
@@ -440,34 +539,36 @@ impl PostService {
         // we can use the simple JSON-equality index for everything else.
         let tag_filter = query.tag.clone();
         let category_filter = query.category.clone();
-        let needs_array_filter = tag_filter.is_some() || category_filter.is_some();
-        if !needs_array_filter {
-            opts = opts.paged(query.offset, query.limit);
-        }
-        let ListResult { items, mut total } = self.index.list(&Post::gvk(), &opts)?;
+        let ListResult { items, .. } = self.index.list(&Post::gvk(), &opts)?;
         let mut items = items;
-        if needs_array_filter {
-            items.retain(|entry| {
-                tag_filter
+        items.retain(|entry| {
+            tag_filter
+                .as_deref()
+                .is_none_or(|t| array_field_contains(entry, "spec.tags", t))
+                && category_filter
                     .as_deref()
-                    .is_none_or(|t| array_field_contains(entry, "spec.tags", t))
-                    && category_filter
-                        .as_deref()
-                        .is_none_or(|c| array_field_contains(entry, "spec.categories", c))
-            });
-            total = items.len();
-            items = items
-                .into_iter()
-                .skip(query.offset)
-                .take(query.limit)
-                .collect();
-        }
+                    .is_none_or(|c| array_field_contains(entry, "spec.categories", c))
+        });
         let mut list_items = Vec::with_capacity(items.len());
         for entry in items {
             let post: Post = serde_json::from_value(entry.raw)
                 .map_err(|e| ServiceError::Internal(format!("decode Post: {e}")))?;
-            list_items.push(PostListItem::from_post(&post));
+            let comments_count = self.comment_count_for_post(post.metadata.name())?;
+            list_items.push(PostListItem::from_post(&post, comments_count));
         }
+        list_items.sort_by(|a, b| {
+            b.pinned
+                .cmp(&a.pinned)
+                .then_with(|| (!b.published).cmp(&(!a.published)))
+                .then_with(|| list_item_time(b).cmp(&list_item_time(a)))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        let total = list_items.len();
+        list_items = list_items
+            .into_iter()
+            .skip(query.offset)
+            .take(query.limit)
+            .collect();
         Ok(PostListPage {
             items: list_items,
             total,
@@ -493,7 +594,15 @@ impl PostService {
     /// then loads the post. Returns `None` on miss so the HTTP layer can map
     /// to 404.
     pub async fn public_by_slug(&self, slug: &str) -> Result<PostDetail, ServiceError> {
-        let opts = ListOptions::default()
+        self.by_slug(slug, false).await
+    }
+
+    pub async fn by_slug(
+        &self,
+        slug: &str,
+        include_private: bool,
+    ) -> Result<PostDetail, ServiceError> {
+        let mut opts = ListOptions::default()
             .with_label(LabelSelector::Equals {
                 key: PUBLISHED_LABEL.to_owned(),
                 value: "true".to_owned(),
@@ -501,11 +610,14 @@ impl PostService {
             .with_label(LabelSelector::NotEquals {
                 key: DELETED_LABEL.to_owned(),
                 value: "true".to_owned(),
-            })
-            .with_field(FieldSelector::Equals {
+            });
+        if !include_private {
+            opts = opts.with_field(FieldSelector::Equals {
                 path: "spec.visible".to_owned(),
                 value: serde_json::Value::String("PUBLIC".to_owned()),
-            })
+            });
+        }
+        opts = opts
             .with_field(FieldSelector::Equals {
                 path: "spec.slug".to_owned(),
                 value: serde_json::Value::String(slug.to_owned()),
@@ -526,12 +638,14 @@ impl PostService {
             .fetch::<Post>(name)
             .await?
             .ok_or_else(|| not_found("Post", name))?;
-        let head = post
+        let Some(head) = post
             .spec
             .as_ref()
             .and_then(|s| s.head_snapshot.clone())
             .or_else(|| post.spec.as_ref().and_then(|s| s.base_snapshot.clone()))
-            .ok_or_else(|| ServiceError::Internal(format!("post `{name}` missing snapshot")))?;
+        else {
+            return self.build_detail(post, "", "", "", "markdown");
+        };
         let base_name = post
             .spec
             .as_ref()
@@ -555,7 +669,13 @@ impl PostService {
             .pipeline
             .render(&wrap.raw, &RenderOptions::default())
             .map_err(|e| ServiceError::Content(e.to_string()))?;
-        self.build_detail(post, &rendered.html, &rendered.excerpt, &wrap.raw)
+        self.build_detail(
+            post,
+            &rendered.html,
+            &rendered.excerpt,
+            &wrap.raw,
+            &wrap.raw_type,
+        )
     }
 
     #[allow(clippy::unused_self)]
@@ -565,6 +685,7 @@ impl PostService {
         rendered_html: &str,
         excerpt: &str,
         raw_markdown: &str,
+        raw_type: &str,
     ) -> Result<PostDetail, ServiceError> {
         let status_excerpt = post
             .status
@@ -588,13 +709,7 @@ impl PostService {
             .label(DELETED_LABEL)
             .is_some_and(|v| v == "true")
             || post.metadata.is_deleted();
-        let visits = post
-            .metadata
-            .annotation("content.halo.run/stats")
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            .and_then(|stats| stats.get("visit").and_then(serde_json::Value::as_i64))
-            .and_then(|visit| i32::try_from(visit).ok())
-            .unwrap_or_default();
+        let visits = i32::try_from(visits_from_post(&post)).unwrap_or(i32::MAX);
         Ok(PostDetail {
             name: post.metadata.name().to_owned(),
             title: spec.title,
@@ -602,6 +717,7 @@ impl PostService {
             permalink,
             content_html: rendered_html.to_owned(),
             raw_markdown: raw_markdown.to_owned(),
+            raw_type: raw_type.to_owned(),
             excerpt,
             publish_time: spec.publish_time,
             published,
@@ -618,6 +734,39 @@ impl PostService {
             visits,
             metadata: post.metadata,
         })
+    }
+
+    fn comment_count_for_post(&self, post_name: &str) -> Result<i32, ServiceError> {
+        let res = self.index.list(
+            &Comment::gvk(),
+            &ListOptions::default()
+                .with_label(LabelSelector::Equals {
+                    key: APPROVED_LABEL.to_owned(),
+                    value: "true".to_owned(),
+                })
+                .with_label(LabelSelector::Equals {
+                    key: SUBJECT_KIND_LABEL.to_owned(),
+                    value: "Post".to_owned(),
+                })
+                .with_label(LabelSelector::Equals {
+                    key: SUBJECT_NAME_LABEL.to_owned(),
+                    value: post_name.to_owned(),
+                }),
+        )?;
+        let count = res
+            .items
+            .into_iter()
+            .filter(|entry| {
+                entry
+                    .raw
+                    .get("spec")
+                    .and_then(|spec| spec.get("hidden"))
+                    .and_then(serde_json::Value::as_bool)
+                    != Some(true)
+            })
+            .count();
+        i32::try_from(count)
+            .map_err(|e| ServiceError::Internal(format!("comment count overflow: {e}")))
     }
 }
 
@@ -752,11 +901,12 @@ pub struct PostListItem {
     pub last_modify_time: Option<chrono::DateTime<Utc>>,
     pub comments_count: i32,
     pub visits: i32,
+    pub pinned: bool,
     pub priority: i32,
 }
 
 impl PostListItem {
-    fn from_post(post: &Post) -> Self {
+    fn from_post(post: &Post, comments_count: i32) -> Self {
         let spec = post.spec.clone().unwrap_or_default();
         let status = post.status.as_ref();
         let status_excerpt = status.and_then(|s| non_empty(s.excerpt.as_deref()));
@@ -766,13 +916,7 @@ impl PostListItem {
             .is_some_and(|v| v == "true")
             || post.metadata.is_deleted()
             || spec.deleted;
-        let visits = post
-            .metadata
-            .annotation("content.halo.run/stats")
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            .and_then(|stats| stats.get("visit").and_then(serde_json::Value::as_i64))
-            .and_then(|visit| i32::try_from(visit).ok())
-            .unwrap_or_default();
+        let visits = i32::try_from(visits_from_post(post)).unwrap_or(i32::MAX);
         Self {
             name: post.metadata.name().to_owned(),
             title: spec.title,
@@ -796,11 +940,26 @@ impl PostListItem {
             last_modify_time: status
                 .and_then(|s| s.last_modify_time)
                 .or(post.metadata.creation_timestamp),
-            comments_count: status.and_then(|s| s.comments_count).unwrap_or_default(),
+            comments_count,
             visits,
+            pinned: spec.pinned,
             priority: spec.priority,
         }
     }
+}
+
+fn list_item_time(item: &PostListItem) -> Option<chrono::DateTime<Utc>> {
+    item.publish_time
+        .or(item.last_modify_time)
+        .or(item.creation_time)
+}
+
+fn visits_from_post(post: &Post) -> u64 {
+    post.metadata
+        .annotation(STATS_ANNO)
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|stats| stats.get("visit").and_then(serde_json::Value::as_u64))
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -817,6 +976,7 @@ pub struct PostDetail {
     pub permalink: String,
     pub content_html: String,
     pub raw_markdown: String,
+    pub raw_type: String,
     pub excerpt: String,
     pub publish_time: Option<chrono::DateTime<Utc>>,
     pub published: bool,

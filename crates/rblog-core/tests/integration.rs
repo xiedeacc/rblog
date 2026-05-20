@@ -3,15 +3,20 @@
 use std::sync::Arc;
 
 use rblog_auth::PasswordHasher;
-use rblog_content::content::{CommentOwner, Visible};
+use rblog_content::content::{CommentOwner, Post, PostSpec, Snapshot, Visible};
 use rblog_content::render::MarkdownPipeline;
 use rblog_core::{
     bootstrap_system, build_services, BootstrapOptions, CreateUser, DraftPost, NewCategory,
-    NewComment, NewTag, PostListQuery, PostStatusFilter, PublishOptions,
+    NewComment, NewTag, PostListQuery, PostSettingsUpdate, PostStatusFilter, PublishOptions,
 };
-use rblog_store::{run_migrations, AnyPool};
+use rblog_scheme::Extension;
+use rblog_store::{run_migrations, AnyPool, TypedStore};
 
 async fn setup() -> rblog_core::Services {
+    setup_with_pool().await.0
+}
+
+async fn setup_with_pool() -> (rblog_core::Services, AnyPool) {
     let pool = AnyPool::connect("sqlite::memory:")
         .await
         .expect("sqlite pool");
@@ -32,7 +37,7 @@ async fn setup() -> rblog_core::Services {
     bootstrap_system(&pool, &services.index, &hasher, &opts)
         .await
         .expect("bootstrap");
-    services
+    (services, pool)
 }
 
 #[tokio::test]
@@ -119,6 +124,65 @@ async fn draft_publish_and_list_post() {
 }
 
 #[tokio::test]
+async fn post_slug_must_be_unique() {
+    let services = setup().await;
+    services
+        .posts
+        .draft(DraftPost {
+            name: "first".into(),
+            title: "First".into(),
+            slug: "same-slug".into(),
+            markdown: "first".into(),
+            owner: "admin".into(),
+            template: None,
+            cover: None,
+            categories: None,
+            tags: None,
+            excerpt: None,
+            priority: None,
+            pinned: None,
+            allow_comment: None,
+            visible: Visible::default(),
+        })
+        .await
+        .expect("first draft");
+
+    let duplicate = services
+        .posts
+        .draft(DraftPost {
+            name: "second".into(),
+            title: "Second".into(),
+            slug: "same-slug".into(),
+            markdown: "second".into(),
+            owner: "admin".into(),
+            template: None,
+            cover: None,
+            categories: None,
+            tags: None,
+            excerpt: None,
+            priority: None,
+            pinned: None,
+            allow_comment: None,
+            visible: Visible::default(),
+        })
+        .await;
+    assert!(duplicate.is_err());
+
+    let update = services
+        .posts
+        .update_settings(
+            "first",
+            PostSettingsUpdate {
+                slug: Some("same-slug".into()),
+                ..PostSettingsUpdate::default()
+            },
+        )
+        .await
+        .expect("same post can keep slug");
+    assert_eq!(update.slug, "same-slug");
+}
+
+#[tokio::test]
 async fn update_post_content_rerenders() {
     let services = setup().await;
     services
@@ -147,6 +211,180 @@ async fn update_post_content_rerenders() {
         .await
         .expect("update");
     assert!(updated.content_html.contains("second"));
+}
+
+#[tokio::test]
+async fn pinned_posts_sort_before_regular_posts() {
+    let services = setup().await;
+    for name in ["regular", "pinned"] {
+        services
+            .posts
+            .draft(DraftPost {
+                name: name.into(),
+                title: name.into(),
+                slug: name.into(),
+                markdown: name.into(),
+                owner: "admin".into(),
+                template: None,
+                cover: None,
+                categories: None,
+                tags: None,
+                excerpt: None,
+                priority: None,
+                pinned: None,
+                allow_comment: None,
+                visible: Visible::default(),
+            })
+            .await
+            .expect("draft");
+        services
+            .posts
+            .publish(name, PublishOptions::default())
+            .await
+            .expect("publish");
+    }
+    services
+        .posts
+        .update_settings(
+            "pinned",
+            PostSettingsUpdate {
+                pinned: Some(true),
+                ..PostSettingsUpdate::default()
+            },
+        )
+        .await
+        .expect("pin");
+
+    let listed = services.posts.list(PostListQuery::default()).expect("list");
+
+    assert_eq!(listed.items[0].name, "pinned");
+    assert!(listed.items[0].pinned);
+}
+
+#[tokio::test]
+async fn drafts_sort_after_pinned_and_have_time() {
+    let services = setup().await;
+    for name in ["published", "draft", "pinned"] {
+        services
+            .posts
+            .draft(DraftPost {
+                name: name.into(),
+                title: name.into(),
+                slug: name.into(),
+                markdown: name.into(),
+                owner: "admin".into(),
+                template: None,
+                cover: None,
+                categories: None,
+                tags: None,
+                excerpt: None,
+                priority: None,
+                pinned: None,
+                allow_comment: None,
+                visible: Visible::default(),
+            })
+            .await
+            .expect("draft");
+    }
+    services
+        .posts
+        .publish("published", PublishOptions::default())
+        .await
+        .expect("publish");
+    services
+        .posts
+        .publish("pinned", PublishOptions::default())
+        .await
+        .expect("publish pinned");
+    services
+        .posts
+        .update_settings(
+            "pinned",
+            PostSettingsUpdate {
+                pinned: Some(true),
+                ..PostSettingsUpdate::default()
+            },
+        )
+        .await
+        .expect("pin");
+
+    let listed = services
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Any,
+            ..PostListQuery::default()
+        })
+        .expect("list");
+
+    assert_eq!(listed.items[0].name, "pinned");
+    assert_eq!(listed.items[1].name, "draft");
+    assert!(listed.items[1].last_modify_time.is_some());
+}
+
+#[tokio::test]
+async fn purge_removes_only_target_post_snapshots() {
+    let (services, pool) = setup_with_pool().await;
+    for name in ["target", "other"] {
+        services
+            .posts
+            .draft(DraftPost {
+                name: name.into(),
+                title: name.into(),
+                slug: name.into(),
+                markdown: name.into(),
+                owner: "admin".into(),
+                template: None,
+                cover: None,
+                categories: None,
+                tags: None,
+                excerpt: None,
+                priority: None,
+                pinned: None,
+                allow_comment: None,
+                visible: Visible::default(),
+            })
+            .await
+            .expect("draft");
+    }
+
+    services.posts.purge("target").await.expect("purge");
+    let store = TypedStore::new(&pool);
+
+    assert!(store.fetch::<Post>("target").await.unwrap().is_none());
+    assert!(store.fetch::<Post>("other").await.unwrap().is_some());
+    assert_eq!(services.index.entry_count(&Post::gvk()), 1);
+    assert_eq!(services.index.entry_count(&Snapshot::gvk()), 1);
+}
+
+#[tokio::test]
+async fn admin_detail_handles_imported_post_without_snapshots() {
+    let (services, pool) = setup_with_pool().await;
+    let store = TypedStore::new(&pool);
+    let post = Post::new("legacy-empty").with_spec(PostSpec {
+        title: "Legacy Empty".into(),
+        slug: "legacy-empty".into(),
+        ..PostSpec::default()
+    });
+    store.create(&post).await.expect("create legacy post");
+
+    let detail = services
+        .posts
+        .admin_detail("legacy-empty")
+        .await
+        .expect("admin detail");
+
+    assert_eq!(detail.title, "Legacy Empty");
+    assert_eq!(detail.raw_markdown, "");
+    assert_eq!(detail.content_html, "");
+    assert_eq!(detail.raw_type, "markdown");
+
+    let updated = services
+        .posts
+        .update_content("legacy-empty", "new body", "admin")
+        .await
+        .expect("update content");
+    assert_eq!(updated.raw_markdown, "new body");
+    assert!(updated.content_html.contains("new body"));
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 <article class="earth-post-card">
   <div class="earth-post-card__body">
-    <h2><a href="{{ post.permalink }}">{{ post.title }}</a></h2>
+    <h2><a href="{{ post.permalink }}">{% if post.pinned %}[置顶] {% endif %}{% if post.visible == "PRIVATE" %}[private] {% endif %}{{ post.title }}</a></h2>
     {% if post.excerpt %}<p class="earth-post-card__excerpt">{{ post.excerpt }}</p>{% endif %}
   </div>
   <footer class="earth-post-card__meta">

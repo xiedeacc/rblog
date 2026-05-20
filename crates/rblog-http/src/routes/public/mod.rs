@@ -25,11 +25,15 @@ pub mod post;
 pub mod search;
 pub mod taxonomy;
 
-use axum::http::StatusCode;
-use axum::response::Html;
+use axum::http::{
+    header::{CACHE_CONTROL, EXPIRES, PRAGMA},
+    StatusCode,
+};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
-use tower_http::services::ServeDir;
+use axum::{Json, Router};
+use axum_extra::extract::cookie::CookieJar;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::AppState;
 
@@ -48,6 +52,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .route("/feed.xml", get(feed::rss))
         .route("/sitemap.xml", get(feed::sitemap))
         .route("/robots.txt", get(feed::robots))
+        .route("/api/site", get(site_info))
         .merge(comments::router())
         .merge(search::router())
         .merge(plugins::router())
@@ -60,6 +65,13 @@ pub fn router(state: &AppState) -> Router<AppState> {
         r = r.nest_service("/themes", ServeDir::new(themes_root));
     }
 
+    if let Some(data_root) = state.config.paths.themes_root.parent() {
+        let wechat_qr = data_root.join("wechat_qr.jpg");
+        if wechat_qr.exists() {
+            r = r.route_service("/data/wechat_qr.jpg", ServeFile::new(wechat_qr));
+        }
+    }
+
     // For the local storage backend, hand `/uploads/*` to ServeDir directly.
     // S3-backed deployments don't need this — the URLs point at the bucket.
     if let crate::config::StorageConfig::Local { public_prefix } = &state.config.storage {
@@ -67,20 +79,61 @@ pub fn router(state: &AppState) -> Router<AppState> {
         if uploads_root.exists() {
             let trimmed = public_prefix.trim_end_matches('/');
             if !trimmed.is_empty() {
-                r = r.nest_service(trimmed, ServeDir::new(uploads_root));
+                r = r.nest_service(trimmed, ServeDir::new(uploads_root.clone()));
+            }
+            if trimmed != "/uploads" {
+                r = r.nest_service("/uploads", ServeDir::new(uploads_root));
             }
         }
     }
     r
 }
 
-async fn public_not_found(state: axum::extract::State<AppState>) -> (StatusCode, Html<String>) {
-    let ctx = context::base_context(&state);
+async fn site_info(state: axum::extract::State<AppState>) -> Json<serde_json::Value> {
+    Json(context::site_context(&state))
+}
+
+pub fn no_store_html(body: String) -> Response {
+    (
+        [
+            (
+                CACHE_CONTROL,
+                "no-store, no-cache, must-revalidate, max-age=0",
+            ),
+            (PRAGMA, "no-cache"),
+            (EXPIRES, "0"),
+        ],
+        Html(body),
+    )
+        .into_response()
+}
+
+pub fn no_store_status_html(status: StatusCode, body: String) -> Response {
+    (
+        status,
+        [
+            (
+                CACHE_CONTROL,
+                "no-store, no-cache, must-revalidate, max-age=0",
+            ),
+            (PRAGMA, "no-cache"),
+            (EXPIRES, "0"),
+        ],
+        Html(body),
+    )
+        .into_response()
+}
+
+async fn public_not_found(state: axum::extract::State<AppState>, jar: CookieJar) -> Response {
+    let mut ctx = context::base_context(&state);
+    ctx["current_user"] = context::current_user(&state, &jar)
+        .await
+        .unwrap_or(serde_json::Value::Null);
     let body = state
         .themes
         .active()
         .ok()
         .and_then(|t| t.renderer.render("404.html", &ctx).ok())
         .unwrap_or_else(|| "<h1>404 Not Found</h1>".to_owned());
-    (StatusCode::NOT_FOUND, Html(body))
+    no_store_status_html(StatusCode::NOT_FOUND, body)
 }

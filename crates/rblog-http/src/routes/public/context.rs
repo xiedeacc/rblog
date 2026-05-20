@@ -1,5 +1,6 @@
 //! Shared template context builder.
 
+use axum_extra::extract::cookie::CookieJar;
 use serde_json::{json, Value};
 
 use crate::AppState;
@@ -20,6 +21,22 @@ pub fn base_context(state: &AppState) -> Value {
     })
 }
 
+pub fn site_context(state: &AppState) -> Value {
+    site_block(state)
+}
+
+pub async fn current_user(state: &AppState, jar: &CookieJar) -> Option<Value> {
+    let cookie = jar.get(&state.config.session.cookie_name)?;
+    let session = state.sessions.lookup(cookie.value())?;
+    let user = state.services.users.get(&session.user).await.ok()?;
+    let spec = user.spec.unwrap_or_default();
+    Some(json!({
+        "name": user.metadata.name,
+        "display_name": spec.display_name,
+        "email": spec.email,
+    }))
+}
+
 fn site_block(state: &AppState) -> Value {
     // Try the configured site.base_url first, then fall back to whatever
     // the bootstrap wrote into the system ConfigMap. Synchronously look at
@@ -34,13 +51,19 @@ fn site_block(state: &AppState) -> Value {
         )
         .and_then(|entry| entry.raw.get("data").cloned())
         .unwrap_or(Value::Null);
+    let basic = cm
+        .get("basic")
+        .and_then(Value::as_str)
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
     let title = cm
         .get("site.title")
         .and_then(Value::as_str)
+        .or_else(|| basic.as_ref()?.get("title")?.as_str())
         .map_or_else(|| "rblog".to_owned(), str::to_owned);
     let subtitle = cm
         .get("site.subtitle")
         .and_then(Value::as_str)
+        .or_else(|| basic.as_ref()?.get("subtitle")?.as_str())
         .map(str::to_owned);
     let description = cm
         .get("site.description")

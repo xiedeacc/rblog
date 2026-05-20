@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Avatar, Dropdown, Typography, App, Button, Modal, Input } from "antd";
+import { Avatar, Typography, App, Button, Modal, Input } from "antd";
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -10,7 +10,6 @@ import {
   SettingOutlined,
   LogoutOutlined,
   SearchOutlined,
-  HomeOutlined,
   FolderOutlined,
 } from "@ant-design/icons";
 import { Outlet, Link, useRouterState, useNavigate } from "@tanstack/react-router";
@@ -157,30 +156,24 @@ export function AppShell() {
             <div className="console-user-profile">
               <Avatar className="console-user-profile__avatar" size={36} icon={<UserOutlined />} />
               <div className="console-user-profile__info">
-                <Text className="console-user-profile__name" ellipsis>
-                  {user.display_name || user.name}
-                </Text>
-                <span className="console-user-profile__role">Administrator</span>
+                <div className="console-user-profile__identity">
+                  <Text className="console-user-profile__name" ellipsis>
+                    {user.display_name || user.name}
+                  </Text>
+                  <span className="console-user-profile__role">Administrator</span>
+                </div>
+                <div className="console-user-profile__meta">
+                  <Button
+                    className="console-user-profile__logout"
+                    type="text"
+                    size="small"
+                    icon={<LogoutOutlined />}
+                    onClick={onLogout}
+                  >
+                    Logout
+                  </Button>
+                </div>
               </div>
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: "home",
-                      icon: <HomeOutlined />,
-                      label: <a href="/">Visit homepage</a>,
-                    },
-                    {
-                      key: "logout",
-                      icon: <LogoutOutlined />,
-                      label: "Logout",
-                      onClick: onLogout,
-                    },
-                  ],
-                }}
-              >
-                <Button className="console-user-profile__action" shape="circle" size="small" icon={<LogoutOutlined />} />
-              </Dropdown>
             </div>
           ) : (
             <Button size="small" onClick={() => navigate({ to: "/login" })}>

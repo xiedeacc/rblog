@@ -36,6 +36,7 @@ export interface PostSummary {
   last_modify_time: string | null;
   comments_count: number;
   visits: number;
+  pinned: boolean;
   tags: string[];
   categories: string[];
 }
@@ -52,6 +53,7 @@ export interface PostDetail {
   permalink: string;
   content_html: string;
   raw_markdown: string;
+  raw_type: string;
   excerpt: string;
   publish_time: string | null;
   published: boolean;
@@ -118,6 +120,14 @@ export interface SystemInfo {
   active_theme: string;
   active_theme_directory: string;
   themes: string[];
+}
+
+export interface SiteInfo {
+  title: string;
+  subtitle?: string | null;
+  description?: string | null;
+  base_url?: string | null;
+  locale: string;
 }
 
 export interface ConfigMapView {
@@ -190,6 +200,9 @@ export const logout = () =>
 
 export const fetchSystemInfo = () =>
   request<SystemInfo>("/api/admin/system/info");
+
+export const fetchSiteInfo = () =>
+  request<SiteInfo>("/api/site", { noAuthRedirect: true });
 
 export const fetchBootstrapStatus = () =>
   request<{ bootstrapped: boolean }>("/api/admin/bootstrap/status", {
@@ -315,6 +328,16 @@ export const publishPost = (name: string, body: PublishBody = {}) =>
 
 export const unpublishPost = (name: string) =>
   request<PostDetail>(`/api/admin/posts/${encodeURIComponent(name)}/unpublish`, {
+    method: "POST",
+  });
+
+export const pinPost = (name: string) =>
+  request<PostDetail>(`/api/admin/posts/${encodeURIComponent(name)}/pin`, {
+    method: "POST",
+  });
+
+export const unpinPost = (name: string) =>
+  request<PostDetail>(`/api/admin/posts/${encodeURIComponent(name)}/unpin`, {
     method: "POST",
   });
 

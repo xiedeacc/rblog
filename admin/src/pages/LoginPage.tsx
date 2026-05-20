@@ -11,10 +11,12 @@ export function LoginPage() {
   const navigate = useNavigate();
   const setUser = useAuthStore((s) => s.setUser);
   const [loading, setLoading] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetchBootstrapStatus()
       .then((status) => {
+        setBootstrapped(status.bootstrapped);
         if (!status.bootstrapped) {
           navigate({ to: "/bootstrap" });
         }
@@ -48,9 +50,11 @@ export function LoginPage() {
           <Title level={3} style={{ margin: 0 }}>
             Sign in to rblog
           </Title>
-          <Paragraph type="secondary" style={{ margin: 0 }}>
-            First time? <Link onClick={() => navigate({ to: "/bootstrap" })}>Run setup</Link>
-          </Paragraph>
+          {bootstrapped === false && (
+            <Paragraph type="secondary" style={{ margin: 0 }}>
+              First time? <Link onClick={() => navigate({ to: "/bootstrap" })}>Run setup</Link>
+            </Paragraph>
+          )}
           <Form layout="vertical" onFinish={onFinish}>
             <Form.Item
               label="Username"

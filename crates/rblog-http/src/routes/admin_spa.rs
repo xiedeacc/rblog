@@ -28,6 +28,36 @@ pub fn router(_state: &AppState) -> Router<AppState> {
         .route("/admin/*path", get(embedded::serve))
 }
 
+fn site_title(state: &AppState) -> String {
+    crate::routes::public::context::site_context(state)
+        .get("title")
+        .and_then(serde_json::Value::as_str)
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or("rblog")
+        .to_owned()
+}
+
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
+fn with_site_title(state: &AppState, html: String) -> String {
+    let title = format!("<title>{}</title>", escape_html(&site_title(state)));
+    let Some(start) = html.find("<title>") else {
+        return html;
+    };
+    let Some(relative_end) = html[start..].find("</title>") else {
+        return html;
+    };
+    let end = start + relative_end + "</title>".len();
+    format!("{}{}{}", &html[..start], title, &html[end..])
+}
+
 #[cfg(not(feature = "embed-admin"))]
 pub fn router(state: &AppState) -> Router<AppState> {
     use axum::routing::get;
@@ -64,15 +94,29 @@ mod dist {
             .trim_start_matches('/');
 
         if path.starts_with("assets/") && !path.split('/').any(|segment| segment == "..") {
-            return serve_file(&dir.join(path), true);
+            return serve_file(&dir.join(path), true, None);
         }
 
-        serve_file(&dir.join("index.html"), false)
+        serve_file(&dir.join("index.html"), false, Some(&state))
     }
 
-    fn serve_file(path: &std::path::Path, immutable: bool) -> Response<Body> {
+    fn serve_file(
+        path: &std::path::Path,
+        immutable: bool,
+        state: Option<&AppState>,
+    ) -> Response<Body> {
         let Ok(bytes) = fs::read(path) else {
             return not_found();
+        };
+        let body = if path.file_name().is_some_and(|name| name == "index.html") {
+            let html = String::from_utf8_lossy(&bytes).into_owned();
+            Body::from(
+                state
+                    .map(|state| super::with_site_title(state, html.clone()))
+                    .unwrap_or(html),
+            )
+        } else {
+            Body::from(bytes)
         };
         let mime = mime_guess::from_path(path)
             .first_or_octet_stream()
@@ -86,7 +130,7 @@ mod dist {
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, mime)
             .header(header::CACHE_CONTROL, cache)
-            .body(Body::from(bytes))
+            .body(body)
             .unwrap()
     }
 
@@ -135,18 +179,21 @@ mod stub {
 #[cfg(feature = "embed-admin")]
 mod embedded {
     use axum::body::Body;
+    use axum::extract::State;
     use axum::http::{header, HeaderValue, Response, StatusCode, Uri};
     use rust_embed::Embed;
+
+    use crate::AppState;
 
     #[derive(Embed)]
     #[folder = "../../admin/dist/"]
     struct Assets;
 
-    pub(super) async fn index() -> Response<Body> {
-        serve_path("index.html")
+    pub(super) async fn index(State(state): State<AppState>) -> Response<Body> {
+        serve_path("index.html", Some(&state))
     }
 
-    pub(super) async fn serve(uri: Uri) -> Response<Body> {
+    pub(super) async fn serve(State(state): State<AppState>, uri: Uri) -> Response<Body> {
         let path = uri
             .path()
             .trim_start_matches("/admin/")
@@ -157,13 +204,13 @@ mod embedded {
             path.to_owned()
         };
         if Assets::get(&path).is_some() {
-            serve_path(&path)
+            serve_path(&path, Some(&state))
         } else {
-            serve_path("index.html")
+            serve_path("index.html", Some(&state))
         }
     }
 
-    fn serve_path(path: &str) -> Response<Body> {
+    fn serve_path(path: &str, state: Option<&AppState>) -> Response<Body> {
         let Some(file) = Assets::get(path) else {
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -178,11 +225,21 @@ mod embedded {
         } else {
             HeaderValue::from_static("public, max-age=31536000, immutable")
         };
+        let body = if path == "index.html" {
+            let html = String::from_utf8_lossy(&file.data).into_owned();
+            Body::from(
+                state
+                    .map(|state| super::with_site_title(state, html.clone()))
+                    .unwrap_or(html),
+            )
+        } else {
+            Body::from(file.data.into_owned())
+        };
         Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, mime)
             .header(header::CACHE_CONTROL, cache)
-            .body(Body::from(file.data.into_owned()))
+            .body(body)
             .unwrap()
     }
 }

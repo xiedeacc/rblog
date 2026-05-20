@@ -269,6 +269,67 @@ async fn full_post_lifecycle_via_admin_api() {
 }
 
 #[tokio::test]
+async fn visible_filter_keeps_pinned_private_posts() {
+    let h = boot().await;
+    bootstrap(&h).await;
+    assert_eq!(login(&h, "admin", "supersecret").await, 200);
+
+    for (name, title, visible) in [
+        ("public-post", "Public post", "PUBLIC"),
+        ("private-post", "Private post", "PRIVATE"),
+    ] {
+        let create = h
+            .client
+            .post(h.url("/api/admin/posts"))
+            .json(&json!({
+                "name": name,
+                "title": title,
+                "slug": name,
+                "markdown": format!("# {title}"),
+                "visible": visible,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(create.status(), 201, "{}", create.text().await.unwrap());
+        let publish = h
+            .client
+            .post(h.url(&format!("/api/admin/posts/{name}/publish")))
+            .json(&json!({}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(publish.status(), 200);
+    }
+
+    let pin = h
+        .client
+        .post(h.url("/api/admin/posts/private-post/pin"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(pin.status(), 200);
+
+    let list: serde_json::Value = h
+        .client
+        .get(h.url("/api/admin/posts?status=published&visible=PUBLIC"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let titles = list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["title"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(titles.contains(&"Public post"));
+    assert!(titles.contains(&"Private post"));
+}
+
+#[tokio::test]
 async fn tag_and_category_crud() {
     let h = boot().await;
     bootstrap(&h).await;

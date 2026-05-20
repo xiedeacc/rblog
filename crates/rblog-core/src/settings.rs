@@ -14,6 +14,7 @@ use crate::{conflict, not_found, ServiceError};
 
 /// Stable name for the blog-wide config map.
 pub const SYSTEM_CONFIGMAP: &str = "system";
+pub const SITE_VISITS_KEY: &str = "site.visits";
 
 #[derive(Clone)]
 pub struct ConfigMapService {
@@ -79,6 +80,30 @@ impl ConfigMapService {
     pub async fn system_value(&self, key: &str) -> Result<Option<String>, ServiceError> {
         let cm = self.system().await?;
         Ok(cm.data.and_then(|m| m.get(key).cloned()))
+    }
+
+    pub async fn increment_site_visit(&self) -> Result<u64, ServiceError> {
+        let store = TypedStore::new(&self.pool);
+        let mut cm = store
+            .fetch::<ConfigMap>(SYSTEM_CONFIGMAP)
+            .await?
+            .unwrap_or_else(|| ConfigMap::new(SYSTEM_CONFIGMAP));
+        let mut data = cm.data.take().unwrap_or_default();
+        let next = data
+            .get(SITE_VISITS_KEY)
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .unwrap_or_default()
+            .saturating_add(1);
+        data.insert(SITE_VISITS_KEY.to_owned(), next.to_string());
+        cm.data = Some(data);
+
+        let saved = if cm.metadata.version.is_some() {
+            store.update(&cm).await?
+        } else {
+            store.create(&cm).await?
+        };
+        upsert(&self.index, &saved)?;
+        Ok(next)
     }
 }
 

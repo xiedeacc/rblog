@@ -92,6 +92,10 @@ async fn boot() -> Harness {
                 cover: None,
                 categories: Some(vec!["news".into()]),
                 tags: tag.map(|t| vec![t.to_owned()]),
+                excerpt: None,
+                priority: None,
+                pinned: None,
+                allow_comment: None,
                 visible: rblog_content::content::Visible::default(),
             })
             .await
@@ -102,6 +106,31 @@ async fn boot() -> Harness {
             .await
             .expect("publish");
     }
+    services
+        .posts
+        .draft(DraftPost {
+            name: "private-post".into(),
+            title: "Private post".into(),
+            slug: "private".into(),
+            markdown: "# Private post\n\nOnly signed-in users can read this.".into(),
+            owner: "admin".into(),
+            template: None,
+            cover: None,
+            categories: Some(vec!["news".into()]),
+            tags: None,
+            excerpt: None,
+            priority: None,
+            pinned: None,
+            allow_comment: None,
+            visible: rblog_content::content::Visible::Private,
+        })
+        .await
+        .expect("private draft");
+    services
+        .posts
+        .publish("private-post", PublishOptions::default())
+        .await
+        .expect("publish private");
 
     let mut config = AppConfig::default();
     config.paths.themes_root = tmp.path().join("themes");
@@ -161,8 +190,65 @@ async fn home_lists_published_posts() {
     assert_eq!(status, 200);
     assert!(body.contains("First post"));
     assert!(body.contains("Second post"));
+    assert!(!body.contains("Private post"));
     // Site title from system config map.
     assert!(body.contains("rblog test"));
+}
+
+#[tokio::test]
+async fn site_info_exposes_site_title() {
+    let h = boot().await;
+    let body: serde_json::Value = reqwest::get(format!("http://{}/api/site", h.addr))
+        .await
+        .expect("connect")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(body["title"], "rblog test");
+}
+
+#[tokio::test]
+async fn signed_in_home_lists_private_posts() {
+    let h = boot().await;
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("client");
+    let login = client
+        .post(format!("http://{}/api/admin/auth/login", h.addr))
+        .json(&serde_json::json!({
+            "username": "admin",
+            "password": "supersecret",
+        }))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(login.status(), 200);
+
+    let body = client
+        .get(format!("http://{}/", h.addr))
+        .send()
+        .await
+        .expect("home")
+        .text()
+        .await
+        .expect("body");
+    assert!(body.contains("[private] Private post"));
+    assert!(body.contains("data-user-menu"));
+    assert!(body.contains("控制台"));
+    assert!(body.contains("退出登录"));
+
+    let detail = client
+        .get(format!("http://{}/archives/private", h.addr))
+        .send()
+        .await
+        .expect("private detail");
+    assert_eq!(detail.status(), 200);
+    assert!(detail
+        .text()
+        .await
+        .expect("body")
+        .contains("Only signed-in users can read this."));
 }
 
 #[tokio::test]
@@ -172,6 +258,26 @@ async fn post_detail_renders_html() {
     assert_eq!(status, 200);
     assert!(body.contains("First post"));
     assert!(body.contains("<strong>First post</strong>"));
+}
+
+#[tokio::test]
+async fn post_detail_increments_visit_stats() {
+    let h = boot().await;
+    let (status, body) = fetch_text(h.addr, "/archives/first").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("阅读 1"));
+
+    let (status, body) = fetch_text(h.addr, "/archives/first").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("阅读 2"));
+
+    let (status, body) = fetch_text(h.addr, "/").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("<dt>2</dt><dd>阅读量</dd>"));
+
+    let (status, body) = fetch_text(h.addr, "/").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("<dt>2</dt><dd>阅读量</dd>"));
 }
 
 #[tokio::test]

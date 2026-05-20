@@ -352,12 +352,7 @@ impl CommentService {
             .collect::<Result<Vec<Comment>, ServiceError>>()?;
         Ok(comments
             .into_iter()
-            .filter(|comment| {
-                comment
-                    .spec
-                    .as_ref()
-                    .is_some_and(|spec| !spec.base.hidden)
-            })
+            .filter(|comment| comment.spec.as_ref().is_some_and(|spec| !spec.base.hidden))
             .collect())
     }
 
@@ -383,6 +378,19 @@ impl CommentService {
                     .map_err(|err| ServiceError::Internal(format!("decode Reply: {err}")))
             })
             .collect()
+    }
+
+    pub fn public_comment_count(&self) -> Result<usize, ServiceError> {
+        Ok(self
+            .admin_comments()?
+            .into_iter()
+            .filter(|comment| {
+                comment
+                    .spec
+                    .as_ref()
+                    .is_some_and(|spec| spec.base.approved && !spec.base.hidden)
+            })
+            .count())
     }
 
     /// Admin moderation queue: every unapproved top-level comment.
@@ -435,12 +443,7 @@ impl CommentService {
             .collect::<Result<Vec<Reply>, ServiceError>>()?;
         Ok(replies
             .into_iter()
-            .filter(|reply| {
-                reply
-                    .spec
-                    .as_ref()
-                    .is_some_and(|spec| !spec.base.hidden)
-            })
+            .filter(|reply| reply.spec.as_ref().is_some_and(|spec| !spec.base.hidden))
             .collect())
     }
 

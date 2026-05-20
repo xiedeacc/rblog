@@ -32,7 +32,7 @@
           <div class="comment-item__body">
             <header>
               <strong>{{ comment.owner_display_name }}</strong>
-              {% if comment.created_at %}<time>{{ comment.created_at }}</time>{% endif %}
+              {% if comment.created_at %}<time datetime="{{ comment.created_at | isoformat }}">{{ comment.created_at | date('%Y-%m-%d %H:%M:%S') }}</time>{% endif %}
             </header>
             <div class="comment-content">{{ comment.content_html | safe }}</div>
             <button
@@ -47,7 +47,7 @@
                   <article class="comment-reply">
                     <header>
                       <strong>{{ reply.owner_display_name }}</strong>
-                      {% if reply.created_at %}<time>{{ reply.created_at }}</time>{% endif %}
+                      {% if reply.created_at %}<time datetime="{{ reply.created_at | isoformat }}">{{ reply.created_at | date('%Y-%m-%d %H:%M:%S') }}</time>{% endif %}
                     </header>
                     <div class="comment-content">{{ reply.content_html | safe }}</div>
                   </article>
@@ -88,6 +88,12 @@
       <p class="comment-form__status" data-comment-status hidden></p>
     </form>
   </section>
+
+  {% if current_user %}
+    <a class="halo-post-edit" href="/admin/posts/{{ post.name }}" aria-label="编辑文章" title="编辑文章">
+      <span class="i-tabler-pencil"></span>
+    </a>
+  {% endif %}
 
   <script>
     (() => {

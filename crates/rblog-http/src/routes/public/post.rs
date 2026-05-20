@@ -2,22 +2,26 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::Response;
+use axum_extra::extract::cookie::CookieJar;
 use rblog_core::ServiceError;
 use serde_json::{json, Value};
 
-use crate::routes::public::context::base_context;
+use crate::routes::public::context::{base_context, current_user};
 use crate::{AppState, HttpError};
 
 pub async fn detail(
     state: State<AppState>,
+    jar: CookieJar,
     Path(slug): Path<String>,
 ) -> Result<Response, HttpError> {
-    let detail = match state.services.posts.public_by_slug(&slug).await {
+    let user = current_user(&state, &jar).await;
+    let mut detail = match state.services.posts.by_slug(&slug, user.is_some()).await {
         Ok(d) => d,
         Err(ServiceError::NotFound { .. }) => return Ok(render_404(&state)),
         Err(e) => return Err(e.into()),
     };
+    detail.visits = state.services.posts.increment_visit(&detail.name).await?;
     let mut ctx = base_context(&state);
     let post = json!({
         "name": detail.name,
@@ -72,12 +76,15 @@ pub async fn detail(
         }));
     }
     ctx["post"] = post;
+    ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["comments"] = serde_json::to_value(comments).unwrap_or(json!([]));
     let theme = state
         .themes
         .active()
         .map_err(|e| HttpError::Internal(anyhow::Error::new(e)))?;
-    Ok(Html(theme.renderer.render("post.html", &ctx)?).into_response())
+    Ok(super::no_store_html(
+        theme.renderer.render("post.html", &ctx)?,
+    ))
 }
 
 fn render_404(state: &AppState) -> Response {
@@ -88,7 +95,7 @@ fn render_404(state: &AppState) -> Response {
         .ok()
         .and_then(|t| t.renderer.render("404.html", &ctx).ok())
         .unwrap_or_else(|| "<h1>404 Not Found</h1>".to_owned());
-    (StatusCode::NOT_FOUND, Html(body)).into_response()
+    super::no_store_status_html(StatusCode::NOT_FOUND, body)
 }
 
 /// Resolve each `tag` name to a `{display_name, slug, permalink}` triple so

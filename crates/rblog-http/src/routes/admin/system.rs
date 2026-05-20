@@ -65,15 +65,33 @@ pub struct BootstrapStatusResponse {
 }
 
 pub async fn is_bootstrapped(state: &AppState) -> Result<bool, HttpError> {
-    let users = state
+    let bindings = state
         .services
         .index
         .list(
-            &rblog_content::core::User::gvk(),
-            &ListOptions::default().paged(0, 1),
+            &rblog_content::core::RoleBinding::gvk(),
+            &ListOptions::default(),
         )
         .map_err(HttpError::from)?;
-    Ok(users.total > 0)
+    for entry in bindings.items {
+        let binding: rblog_content::core::RoleBinding = serde_json::from_value(entry.raw)
+            .map_err(|e| HttpError::Internal(anyhow::Error::new(e)))?;
+        let is_super_admin = binding.role_ref.as_ref().is_some_and(|role| {
+            role.kind == "Role" && matches!(role.name.as_str(), "super-admin" | "super-role")
+        });
+        if !is_super_admin {
+            continue;
+        }
+        let Some(subjects) = binding.subjects else {
+            continue;
+        };
+        for subject in subjects {
+            if subject.kind == "User" && state.services.users.get(&subject.name).await.is_ok() {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 /// Lightweight public status check for the admin SPA.

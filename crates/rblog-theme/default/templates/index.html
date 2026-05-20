@@ -18,16 +18,23 @@
         <div class="earth-profile__avatar">
           <img src="/themes/{{ active_theme }}/assets/images/default-avatar.svg" alt="{{ site.title | default('rblog') }}" />
         </div>
-        <h2>{{ site.title | default('rblog') }}~</h2>
+        <h2>{{ site.title | default('rblog') }}</h2>
         <dl class="earth-stats">
           <div><dt>{{ home.stats.posts | default(0) }}</dt><dd>文章数</dd></div>
           <div><dt>{{ home.stats.categories | default(0) }}</dt><dd>分类数</dd></div>
           <div><dt>{{ home.stats.comments | default(0) }}</dt><dd>评论数</dd></div>
-          <div><dt>{{ home.stats.visits | default(0) }}</dt><dd>访问量</dd></div>
+          <div><dt>{{ home.stats.visits | default(0) }}</dt><dd>阅读量</dd></div>
         </dl>
         <div class="earth-social">
-          <a href="weixin://" aria-label="WeChat"><span class="i-simple-icons-wechat"></span></a>
+          <button type="button" class="earth-social__button" data-wechat-popup aria-label="WeChat"><span class="i-simple-icons-wechat"></span></button>
           <a href="https://github.com/xiedeacc" aria-label="GitHub" target="_blank" rel="noopener noreferrer"><span class="i-simple-icons-github"></span></a>
+        </div>
+        <div class="earth-wechat-modal" data-wechat-modal hidden>
+          <button type="button" class="earth-wechat-modal__backdrop" data-wechat-close aria-label="Close WeChat QR"></button>
+          <div class="earth-wechat-modal__dialog" role="dialog" aria-modal="true" aria-label="WeChat QR code">
+            <button type="button" class="earth-wechat-modal__close" data-wechat-close aria-label="Close">×</button>
+            <img src="/data/wechat_qr.jpg" alt="WeChat QR code" />
+          </div>
         </div>
       </section>
 

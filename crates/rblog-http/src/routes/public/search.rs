@@ -4,13 +4,14 @@
 //! The themed search page lives at `/search?q=…` and renders `search.html`.
 
 use axum::extract::{Query, State};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::Response;
 use axum::routing::get;
 use axum::{Json, Router};
+use axum_extra::extract::cookie::CookieJar;
 use rblog_search::SearchHit;
 use serde::Deserialize;
 
-use crate::routes::public::context::base_context;
+use crate::routes::public::context::{base_context, current_user};
 use crate::{AppState, HttpError};
 
 pub fn router() -> Router<AppState> {
@@ -44,8 +45,10 @@ pub async fn json(
 /// falls back to a minimal inline HTML page so the route is always usable.
 pub async fn themed(
     State(state): State<AppState>,
+    jar: CookieJar,
     Query(q): Query<SearchQuery>,
 ) -> Result<Response, HttpError> {
+    let user = current_user(&state, &jar).await;
     let hits = if q.q.trim().is_empty() {
         Vec::new()
     } else {
@@ -53,6 +56,10 @@ pub async fn themed(
     };
     let mut ctx = base_context(&state);
     if let Some(obj) = ctx.as_object_mut() {
+        obj.insert(
+            "current_user".to_owned(),
+            user.unwrap_or(serde_json::Value::Null),
+        );
         obj.insert("query".to_owned(), serde_json::Value::String(q.q.clone()));
         obj.insert(
             "hits".to_owned(),
@@ -66,7 +73,7 @@ pub async fn themed(
         .ok()
         .and_then(|t| t.renderer.render("search.html", &ctx).ok())
         .unwrap_or_else(|| fallback_html(&q.q, &hits));
-    Ok(Html(body).into_response())
+    Ok(super::no_store_html(body))
 }
 
 fn fallback_html(query: &str, hits: &[SearchHit]) -> String {

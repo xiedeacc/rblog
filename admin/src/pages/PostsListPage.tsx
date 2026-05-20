@@ -11,6 +11,7 @@ import {
   Select,
   Space,
   Spin,
+  Tag,
   Typography,
   App,
   type MenuProps,
@@ -23,8 +24,9 @@ import {
   SettingOutlined,
   RollbackOutlined,
   BookOutlined,
+  PushpinOutlined,
 } from "@ant-design/icons";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import {
@@ -35,14 +37,28 @@ import {
   restorePost,
   unpublishPost,
   publishPost,
+  pinPost,
+  unpinPost,
 } from "@/api/client";
 
 const { Title } = Typography;
 const { Search } = Input;
 
+interface PostsSearch {
+  page: number | undefined;
+  size: number | undefined;
+  q: string | undefined;
+  status: string | undefined;
+  visible: string | undefined;
+  sort: string | undefined;
+  source: string | undefined;
+}
+
 type PostAction =
   | "publish"
   | "unpublish"
+  | "pin"
+  | "unpin"
   | "delete"
   | "purge"
   | "restore";
@@ -57,29 +73,67 @@ function visibilityLabel(value: string): string {
   return "Public";
 }
 
+function normalizeStatus(value: string | undefined): "any" | "published" | "draft" {
+  if (value === "published" || value === "draft") return value;
+  return "any";
+}
+
 export function PostsListPage() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const routeSearch = useSearch({ strict: false }) as PostsSearch;
   const isRecycleBin = pathname.endsWith("/posts/deleted");
   const { message } = App.useApp();
   const qc = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState(20);
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string | undefined>(undefined);
-  const [visible, setVisible] = useState<string | undefined>(undefined);
-  const [sort, setSort] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState<string[]>([]);
+  const page = routeSearch.page ?? 1;
+  const size = routeSearch.size ?? 20;
+  const q = routeSearch.q ?? "";
+  const status = normalizeStatus(routeSearch.status);
+  const apiStatus = status === "any" ? undefined : status;
+  const visible = isRecycleBin ? routeSearch.visible : (routeSearch.visible ?? "PUBLIC");
+  const apiVisible = visible === "any" ? undefined : visible;
+  const sort = routeSearch.sort;
+  const listSearch = useMemo(
+    () => ({
+      page: page === 1 ? undefined : page,
+      size: size === 20 ? undefined : size,
+      q: q || undefined,
+      status: status === "any" ? undefined : status,
+      visible: visible === "PUBLIC" ? undefined : visible,
+      sort,
+      source: undefined,
+    }),
+    [page, q, size, sort, status, visible],
+  );
+  const updateSearch = (patch: Partial<PostsSearch>) => {
+    setSelected([]);
+    void navigate({
+      to: isRecycleBin ? "/posts/deleted" : "/posts",
+      replace: true,
+      search: {
+        ...listSearch,
+        ...patch,
+      },
+    });
+  };
+  const openPost = (postName: string) => {
+    void navigate({
+      to: "/posts/$name",
+      params: { name: postName },
+      search: { ...listSearch, source: isRecycleBin ? "deleted" : undefined },
+    });
+  };
 
   const offset = (page - 1) * size;
   const query = useQuery({
-    queryKey: ["posts", page, size, status, visible, isRecycleBin],
+    queryKey: ["posts", page, size, status, apiVisible, isRecycleBin],
     queryFn: () =>
       listPosts({
         offset,
         limit: size,
-        status,
-        visible,
+        status: apiStatus,
+        visible: apiVisible,
         include_deleted: isRecycleBin,
         deleted_only: isRecycleBin,
       }),
@@ -111,11 +165,15 @@ export function PostsListPage() {
   const selectedPosts = posts.filter((post) => selected.includes(post.name));
   const selectedDrafts = selectedPosts.filter((post) => !post.published);
   const selectedPublished = selectedPosts.filter((post) => post.published);
+  const selectedUnpinned = selectedPosts.filter((post) => !post.pinned);
+  const selectedPinned = selectedPosts.filter((post) => post.pinned);
 
   const mutate = useMutation({
     mutationFn: async (action: { kind: PostAction; name: string }) => {
       if (action.kind === "publish") return publishPost(action.name);
       if (action.kind === "unpublish") return unpublishPost(action.name);
+      if (action.kind === "pin") return pinPost(action.name);
+      if (action.kind === "unpin") return unpinPost(action.name);
       if (action.kind === "purge") return purgePost(action.name);
       if (action.kind === "restore") return restorePost(action.name);
       return softDeletePost(action.name);
@@ -137,10 +195,16 @@ export function PostsListPage() {
           ? selectedDrafts.map((post) => post.name)
           : kind === "unpublish"
             ? selectedPublished.map((post) => post.name)
-            : selected;
+            : kind === "pin"
+              ? selectedUnpinned.map((post) => post.name)
+              : kind === "unpin"
+                ? selectedPinned.map((post) => post.name)
+                : selected;
       for (const name of targets) {
         if (kind === "publish") await publishPost(name);
         if (kind === "unpublish") await unpublishPost(name);
+        if (kind === "pin") await pinPost(name);
+        if (kind === "unpin") await unpinPost(name);
         if (kind === "delete") await softDeletePost(name);
         if (kind === "purge") await purgePost(name);
         if (kind === "restore") await restorePost(name);
@@ -189,16 +253,22 @@ export function PostsListPage() {
         onClick: () => mutate.mutate({ kind: "publish", name: post.name }),
       },
       {
+        key: post.pinned ? "unpin" : "pin",
+        label: post.pinned ? "Cancel Pin" : "Pin",
+        icon: <PushpinOutlined />,
+        onClick: () => mutate.mutate({ kind: post.pinned ? "unpin" : "pin", name: post.name }),
+      },
+      {
         key: "edit",
         label: "Edit",
         icon: <EditOutlined />,
-        onClick: () => navigate({ to: "/posts/$name", params: { name: post.name } }),
+        onClick: () => openPost(post.name),
       },
       {
         key: "setting",
         label: "Setting",
         icon: <SettingOutlined />,
-        onClick: () => navigate({ to: "/posts/$name", params: { name: post.name } }),
+        onClick: () => openPost(post.name),
       },
       { type: "divider" },
       {
@@ -228,12 +298,12 @@ export function PostsListPage() {
           </div>
           <Space>
             {isRecycleBin ? (
-              <Button size="small" onClick={() => navigate({ to: "/posts" })}>
+              <Button size="small" onClick={() => navigate({ to: "/posts", search: listSearch })}>
                 Back
               </Button>
             ) : (
               <>
-                <Button size="small" onClick={() => navigate({ to: "/posts/deleted" })}>
+                <Button size="small" onClick={() => navigate({ to: "/posts/deleted", search: listSearch })}>
                   Recycle Bin
                 </Button>
               </>
@@ -241,14 +311,16 @@ export function PostsListPage() {
             <Button
               type="primary"
               icon={<PlusCircleOutlined />}
-              onClick={() => navigate({ to: "/posts/new" })}
+              onClick={() => navigate({ to: "/posts/new", search: listSearch })}
             >
               New
             </Button>
           </Space>
         </header>
         <div className="halo-posts-toolbar">
-          <Checkbox checked={allSelected} indeterminate={selected.length > 0 && !allSelected} onChange={(e) => setAllSelected(e.target.checked)} />
+          <div className="halo-posts-toolbar__checkbox">
+            <Checkbox checked={allSelected} indeterminate={selected.length > 0 && !allSelected} onChange={(e) => setAllSelected(e.target.checked)} />
+          </div>
           <div className="halo-posts-toolbar__main">
             {selected.length ? (
               <Space>
@@ -267,6 +339,12 @@ export function PostsListPage() {
                     {selectedPublished.length ? (
                       <Button onClick={() => batchMutate.mutate("unpublish")}>Cancel Publish</Button>
                     ) : null}
+                    {selectedUnpinned.length ? (
+                      <Button icon={<PushpinOutlined />} onClick={() => batchMutate.mutate("pin")}>Pin</Button>
+                    ) : null}
+                    {selectedPinned.length ? (
+                      <Button icon={<PushpinOutlined />} onClick={() => batchMutate.mutate("unpin")}>Cancel Pin</Button>
+                    ) : null}
                     <Popconfirm title="Move selected posts to recycle bin?" onConfirm={() => batchMutate.mutate("delete")}>
                       <Button danger>Delete</Button>
                     </Popconfirm>
@@ -279,8 +357,7 @@ export function PostsListPage() {
                 placeholder="Search"
                 value={q}
                 onChange={(event) => {
-                  setPage(1);
-                  setQ(event.target.value);
+                  updateSearch({ page: undefined, q: event.target.value || undefined });
                 }}
               />
             )}
@@ -290,17 +367,14 @@ export function PostsListPage() {
               <Select
                 size="small"
                 value={status}
-                placeholder="Status: All"
-                allowClear
                 style={{ width: 112 }}
                 onChange={(value) => {
-                  setPage(1);
-                  setStatus(value);
+                  updateSearch({ page: undefined, status: value === "any" ? undefined : value });
                 }}
                 options={[
+                  { value: "any", label: "All" },
                   { value: "published", label: "Published" },
                   { value: "draft", label: "Draft" },
-                  { value: "any", label: "All" },
                 ]}
               />
               <Select
@@ -310,10 +384,10 @@ export function PostsListPage() {
                 allowClear
                 style={{ width: 112 }}
                 onChange={(value) => {
-                  setPage(1);
-                  setVisible(value);
+                  updateSearch({ page: undefined, visible: value });
                 }}
                 options={[
+                  { value: "any", label: "All" },
                   { value: "PUBLIC", label: "Public" },
                   { value: "PRIVATE", label: "Private" },
                   { value: "INTERNAL", label: "Internal" },
@@ -325,7 +399,7 @@ export function PostsListPage() {
                 placeholder="Sort: Default"
                 allowClear
                 style={{ width: 124 }}
-                onChange={setSort}
+                onChange={(value) => updateSearch({ sort: value })}
                 options={[
                   { value: "publish_time,desc", label: "Publish ↓" },
                   { value: "publish_time,asc", label: "Publish ↑" },
@@ -351,7 +425,7 @@ export function PostsListPage() {
           <div className="halo-entity-container">
             {posts.map((post) => (
               <Dropdown key={post.name} trigger={["contextMenu"]} menu={{ items: postMenu(post) }}>
-                <article className={`halo-post-row${selected.includes(post.name) ? " halo-post-row--selected" : ""}`}>
+                <article className={`halo-post-row${selected.includes(post.name) ? " halo-post-row--selected" : ""}${post.pinned ? " halo-post-row--pinned" : ""}`}>
                   <div className="halo-post-row__checkbox">
                     <Checkbox
                       checked={selected.includes(post.name)}
@@ -362,11 +436,14 @@ export function PostsListPage() {
                     <button
                       type="button"
                       className="halo-post-row__title"
-                      onClick={() => navigate({ to: "/posts/$name", params: { name: post.name } })}
+                      onClick={() => openPost(post.name)}
                     >
-                      {post.title || post.slug}
+                      {post.pinned ? "[置顶] " : ""}{post.title || post.slug}
                     </button>
                     <div className="halo-post-row__meta">
+                      {post.pinned ? (
+                        <Tag color="gold" icon={<PushpinOutlined />}>Pinned</Tag>
+                      ) : null}
                       <span>{post.visits} Visits</span>
                       <span>{post.comments_count} Comments</span>
                     </div>
@@ -408,9 +485,10 @@ export function PostsListPage() {
             showSizeChanger
             showTotal={(total) => `${total} items`}
             onChange={(nextPage, nextSize) => {
-              setPage(nextPage);
-              setSize(nextSize);
-              setSelected([]);
+              updateSearch({
+                page: nextPage === 1 ? undefined : nextPage,
+                size: nextSize === 20 ? undefined : nextSize,
+              });
             }}
           />
         </div>

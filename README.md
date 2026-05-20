@@ -1,9 +1,10 @@
 # rblog
 
 A Rust port of the [Halo](https://github.com/halo-dev/halo) blog
-platform. Single binary, MySQL **or** SQLite, server-side rendered
-public site, React admin SPA, full-text search, and a capability-gated
-WebAssembly plugin runtime.
+platform. Single binary, MySQL **or** SQLite, server-side rendered  
+public site, React admin SPA, full-text search, and a capability-gated  
+WebAssembly plugin runtime. Here is a living example:
+[https://blog.xiedeacc.com](https://blog.xiedeacc.com).
 
 The on-disk schema is wire-compatible with Halo's `extensions` table so
 existing Halo databases can be pointed at rblog without migration.
@@ -59,18 +60,20 @@ with the SPA baked in (`--features embed-admin`). Use plain
 ### Config
 
 `rblog.toml` (or environment variables, prefix `RBLOG__`, `__` = section
-nesting). See [`rblog.example.toml`](./rblog.example.toml) for the full
+nesting). See `[rblog.example.toml](./rblog.example.toml)` for the full
 list. The most common knobs:
 
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `server.bind` | `127.0.0.1:8080` | TCP listen address. |
-| `database.url` | `sqlite::memory:` | `sqlite:./rblog.db` or `mysql://user:pass@host:3306/rblog`. |
-| `paths.themes_root` | `./themes` | MiniJinja templates + static assets. |
-| `paths.uploads_root` | `./uploads` | Local attachment store (`storage.backend = "local"`). |
-| `paths.search_root` | `./search-index` | Persistent Tantivy directory. |
-| `paths.plugins_root` | `./plugins` | One subdirectory per WASM plugin. |
-| `paths.admin_dist` | _unset_ | Disk fallback for the admin SPA when the binary is **not** built with `embed-admin`. |
+
+| Setting              | Default           | Description                                                                          |
+| -------------------- | ----------------- | ------------------------------------------------------------------------------------ |
+| `server.bind`        | `127.0.0.1:8080`  | TCP listen address.                                                                  |
+| `database.url`       | `sqlite::memory:` | `sqlite:./rblog.db` or `mysql://user:pass@host:3306/rblog`.                          |
+| `paths.themes_root`  | `./themes`        | MiniJinja templates + static assets.                                                 |
+| `paths.uploads_root` | `./uploads`       | Local attachment store (`storage.backend = "local"`).                                |
+| `paths.search_root`  | `./search-index`  | Persistent Tantivy directory.                                                        |
+| `paths.plugins_root` | `./plugins`       | One subdirectory per WASM plugin.                                                    |
+| `paths.admin_dist`   | *unset*           | Disk fallback for the admin SPA when the binary is **not** built with `embed-admin`. |
+
 
 ## Repository layout
 
@@ -97,51 +100,50 @@ examples/plugins/ Example plugins (hello-world WAT).
 ### Server-side rendering
 
 - Public site rendered with [MiniJinja](https://docs.rs/minijinja). The
-  default theme is bundled in `rblog-theme/default/` and installed
-  into `paths.themes_root` on first boot.
+default theme is bundled in `rblog-theme/default/` and installed
+into `paths.themes_root` on first boot.
 - The theme can be swapped by dropping a different directory under
-  `paths.themes_root` and selecting it from the admin UI.
+`paths.themes_root` and selecting it from the admin UI.
 
 ### Admin SPA
 
 - React 19 + Vite + TypeScript + Ant Design 5 + Lexical editor.
 - Two serving modes:
   1. **Embedded** (`--features embed-admin`): the entire SPA is baked
-     into the binary via `rust-embed`. No filesystem dependency.
+    into the binary via `rust-embed`. No filesystem dependency.
   2. **Disk-served**: set `paths.admin_dist = "/path/to/admin/dist"`
-     to serve a freshly-built bundle from disk; ideal for development
+    to serve a freshly-built bundle from disk; ideal for development
      when iterating on the SPA.
 - The Vite dev server (`cd admin && pnpm run dev`) proxies `/api` and
-  `/uploads` to `http://127.0.0.1:8080`, so you can run the SPA and
-  the backend side-by-side.
+`/uploads` to `http://127.0.0.1:8080`, so you can run the SPA and
+the backend side-by-side.
 
 ### Full-text search
 
 - [Tantivy](https://github.com/quickwit-oss/tantivy) index seeded from
-  the store on first boot and kept in lockstep with admin
-  create/update/publish/delete via `crates/rblog-http/src/search_sync.rs`.
+the store on first boot and kept in lockstep with admin
+create/update/publish/delete via `crates/rblog-http/src/search_sync.rs`.
 - Public endpoints: `GET /search` (themed HTML) and
-  `GET /api/search?q=…` (JSON).
+`GET /api/search?q=…` (JSON).
 - Admin: `POST /api/admin/system/search/rebuild` (also exposed in the
-  dashboard).
+dashboard).
 
 ### WASM plugin runtime
 
 - Each plugin lives in `<plugins_root>/<name>/` with a `plugin.toml`
-  manifest plus a `plugin.wasm` (or `plugin.wat`) module.
+manifest plus a `plugin.wasm` (or `plugin.wat`) module.
 - Capability allow-list: `log`, `kv`, `http`, `posts:read`,
-  `settings:read`. Anything not declared in the manifest traps at the
-  host import boundary.
+`settings:read`. Anything not declared in the manifest traps at the
+host import boundary.
 - ABI documented in
-  [`crates/rblog-plugins/src/abi.rs`](crates/rblog-plugins/src/abi.rs).
-  Plugins export `memory`, `alloc`, and `handle(method, path, body) ->
-  packed_ptr_len`. The runtime returns a JSON response that the HTTP
-  layer surfaces verbatim under `/api/plugins/<name>/*`.
+`[crates/rblog-plugins/src/abi.rs](crates/rblog-plugins/src/abi.rs)`.
+Plugins export `memory`, `alloc`, and `handle(method, path, body) -> packed_ptr_len`. The runtime returns a JSON response that the HTTP
+layer surfaces verbatim under `/api/plugins/<name>/`*.
 - Admin endpoints under `/api/admin/plugins/*` and a **Plugins** page
-  in the admin SPA cover enable/disable/reload and capability
-  inspection.
-- See [`examples/plugins/`](examples/plugins/) for a runnable example
-  (`hello-world`, written in raw WAT — no toolchain required).
+in the admin SPA cover enable/disable/reload and capability
+inspection.
+- See `[examples/plugins/](examples/plugins/)` for a runnable example
+(`hello-world`, written in raw WAT — no toolchain required).
 
 ## Development
 
@@ -160,7 +162,7 @@ pnpm run build        # writes admin/dist/
 ```
 
 CI mirrors the same commands on every push / pull-request — see
-[`.github/workflows/ci.yaml`](.github/workflows/ci.yaml). The
+`[.github/workflows/ci.yaml](.github/workflows/ci.yaml)`. The
 `mysql` job spins up a MySQL 8 service container and runs the
 workspace tests against it.
 

@@ -25,6 +25,8 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/admin/posts/:name/publish", post(publish))
         .route("/api/admin/posts/:name/unpublish", post(unpublish))
+        .route("/api/admin/posts/:name/pin", post(pin))
+        .route("/api/admin/posts/:name/unpin", post(unpin))
         .route("/api/admin/posts/:name/restore", post(restore))
         .route("/api/admin/posts/:name/purge", delete(purge))
 }
@@ -78,6 +80,7 @@ pub struct PostSummary {
     pub last_modify_time: Option<chrono::DateTime<chrono::Utc>>,
     pub comments_count: i32,
     pub visits: i32,
+    pub pinned: bool,
     pub tags: Vec<String>,
     pub categories: Vec<String>,
 }
@@ -98,6 +101,7 @@ impl From<PostListItem> for PostSummary {
             last_modify_time: p.last_modify_time,
             comments_count: p.comments_count,
             visits: p.visits,
+            pinned: p.pinned,
             tags: p.tags,
             categories: p.categories,
         }
@@ -138,17 +142,42 @@ pub async fn list(
         }
         None => None,
     };
+    let limit = q.limit.min(200);
     let query = PostListQuery {
         status,
         include_deleted: q.include_deleted,
         deleted_only: q.deleted_only,
         visible,
-        tag: q.tag,
-        category: q.category,
+        tag: q.tag.clone(),
+        category: q.category.clone(),
         offset: q.offset,
-        limit: q.limit.min(200),
+        limit,
         public_only: false,
     };
+    if let Some(visible) = visible {
+        let page = state.services.posts.list(PostListQuery {
+            visible: None,
+            offset: 0,
+            limit: 10_000,
+            ..query
+        })?;
+        let filtered = page
+            .items
+            .into_iter()
+            .filter(|post| post.visible == visible || post.pinned)
+            .collect::<Vec<_>>();
+        let total = filtered.len();
+        return Ok(Json(ListPage {
+            items: filtered
+                .into_iter()
+                .skip(q.offset)
+                .take(limit)
+                .map(PostSummary::from)
+                .collect(),
+            total,
+        }));
+    }
+
     let page = state.services.posts.list(query)?;
     Ok(Json(ListPage {
         items: page.items.into_iter().map(PostSummary::from).collect(),
@@ -356,6 +385,44 @@ pub async fn unpublish(
     Path(name): Path<String>,
 ) -> Result<Json<PostDetail>, HttpError> {
     let detail = state.services.posts.unpublish(&name).await?;
+    search_sync::index_if_published(&state.search, &detail);
+    Ok(Json(detail))
+}
+
+pub async fn pin(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<PostDetail>, HttpError> {
+    let detail = state
+        .services
+        .posts
+        .update_settings(
+            &name,
+            PostSettingsUpdate {
+                pinned: Some(true),
+                ..PostSettingsUpdate::default()
+            },
+        )
+        .await?;
+    search_sync::index_if_published(&state.search, &detail);
+    Ok(Json(detail))
+}
+
+pub async fn unpin(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<PostDetail>, HttpError> {
+    let detail = state
+        .services
+        .posts
+        .update_settings(
+            &name,
+            PostSettingsUpdate {
+                pinned: Some(false),
+                ..PostSettingsUpdate::default()
+            },
+        )
+        .await?;
     search_sync::index_if_published(&state.search, &detail);
     Ok(Json(detail))
 }

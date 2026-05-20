@@ -55,6 +55,25 @@ const authenticatedRoute = createRoute({
   component: AppShell,
 });
 
+function numberSearch(value: unknown, fallback?: number): number | undefined {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function stringSearch(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+const validatePostsSearch = (search: Record<string, unknown>) => ({
+  page: numberSearch(search.page, 1),
+  size: numberSearch(search.size, 20),
+  q: stringSearch(search.q),
+  status: stringSearch(search.status),
+  visible: stringSearch(search.visible),
+  sort: stringSearch(search.sort),
+  source: stringSearch(search.source),
+});
+
 const dashboardRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/",
@@ -63,21 +82,25 @@ const dashboardRoute = createRoute({
 const postsListRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/posts",
+  validateSearch: validatePostsSearch,
   component: PostsListPage,
 });
 const postsDeletedRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/posts/deleted",
+  validateSearch: validatePostsSearch,
   component: PostsListPage,
 });
 const postEditRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/posts/$name",
+  validateSearch: validatePostsSearch,
   component: PostEditPage,
 });
 const postNewRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/posts/new",
+  validateSearch: validatePostsSearch,
   component: PostEditPage,
 });
 const commentsRoute = createRoute({

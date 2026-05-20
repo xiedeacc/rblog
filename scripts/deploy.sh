@@ -6,6 +6,7 @@ SERVICE_NAME="rblog"
 PORT="10011"
 DEST_DIR="/usr/local/blog"
 REMOTE_HOST="ubuntu@aws"
+BACKUP_REPO_URL="https://github.com/xiedeacc/blog_data.git"
 
 usage() {
   printf 'Usage: %s [local|aws|all]\n' "$0"
@@ -67,7 +68,7 @@ max_age_days = 14
 
 [storage]
 backend = "local"
-public_prefix = "/upload"
+public_prefix = "/uploads"
 EOF_CONFIG
 }
 
@@ -98,6 +99,44 @@ WantedBy=multi-user.target
 EOF_SERVICE
 }
 
+write_backup_service() {
+  local dst="$1"
+  local run_user="$2"
+  mkdir -p "$(dirname "$dst")"
+  cat >"$dst" <<EOF_SERVICE
+[Unit]
+Description=rblog data backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=${run_user}
+WorkingDirectory=${DEST_DIR}
+Environment=RBLOG_BACKUP_REPO_URL=${BACKUP_REPO_URL}
+ExecStart=${DEST_DIR}/bin/rblog-backup
+EOF_SERVICE
+}
+
+write_backup_timer() {
+  local dst="$1"
+  mkdir -p "$(dirname "$dst")"
+  cat >"$dst" <<EOF_TIMER
+[Unit]
+Description=Run rblog data backup every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Persistent=true
+Unit=rblog-backup.service
+
+[Install]
+WantedBy=timers.target
+EOF_TIMER
+}
+
 build_artifacts() {
   log "building admin SPA"
   (cd "$ROOT_DIR" && corepack pnpm --dir admin build)
@@ -108,6 +147,8 @@ build_artifacts() {
   log "staging artifacts"
   mkdir -p "$BUILD_DIR/bin/admin" "$BUILD_DIR/conf" "$BUILD_DIR/data/themes/default"
   cp "$ROOT_DIR/target/release/${APP_NAME}" "$BUILD_DIR/bin/${APP_NAME}"
+  cp "$ROOT_DIR/scripts/rblog-backup.sh" "$BUILD_DIR/bin/rblog-backup"
+  chmod +x "$BUILD_DIR/bin/rblog-backup"
   cp -R "$ROOT_DIR/admin/dist/." "$BUILD_DIR/bin/admin/"
   cp -R "$ROOT_DIR/crates/rblog-theme/default/." "$BUILD_DIR/data/themes/default/"
   write_config "$BUILD_DIR/conf/rblog.toml"
@@ -138,7 +179,11 @@ stage_binary_for_arch() {
 deploy_local() {
   local run_user="${USER:-$(id -un)}"
   local service_file="$BUILD_DIR/${SERVICE_NAME}.service"
+  local backup_service_file="$BUILD_DIR/${SERVICE_NAME}-backup.service"
+  local backup_timer_file="$BUILD_DIR/${SERVICE_NAME}-backup.timer"
   write_service "$service_file" "$run_user"
+  write_backup_service "$backup_service_file" "$run_user"
+  write_backup_timer "$backup_timer_file"
 
   log "deploying locally to ${DEST_DIR}"
   sudo mkdir -p \
@@ -153,9 +198,12 @@ deploy_local() {
   sudo rsync -a "$BUILD_DIR/conf/" "$DEST_DIR/conf/"
   sudo rsync -a --delete "$BUILD_DIR/data/themes/" "$DEST_DIR/data/themes/"
   sudo cp "$service_file" "/etc/systemd/system/${SERVICE_NAME}.service"
+  sudo cp "$backup_service_file" "/etc/systemd/system/${SERVICE_NAME}-backup.service"
+  sudo cp "$backup_timer_file" "/etc/systemd/system/${SERVICE_NAME}-backup.timer"
   sudo chown -R "$run_user:$run_user" "$DEST_DIR"
   sudo systemctl daemon-reload
   sudo systemctl enable "$SERVICE_NAME"
+  sudo systemctl enable --now "${SERVICE_NAME}-backup.timer"
   sudo systemctl restart "$SERVICE_NAME"
   sudo systemctl --no-pager --full status "$SERVICE_NAME"
 }
@@ -164,10 +212,14 @@ deploy_remote() {
   local host="$1"
   local remote_user="${host%@*}"
   local service_file="$BUILD_DIR/${SERVICE_NAME}.service"
+  local backup_service_file="$BUILD_DIR/${SERVICE_NAME}-backup.service"
+  local backup_timer_file="$BUILD_DIR/${SERVICE_NAME}-backup.timer"
   local remote_arch
   remote_arch="$(ssh "$host" "uname -m")"
   stage_binary_for_arch "$remote_arch"
   write_service "$service_file" "$remote_user"
+  write_backup_service "$backup_service_file" "$remote_user"
+  write_backup_timer "$backup_timer_file"
 
   log "deploying to ${host}:${DEST_DIR} (${remote_arch})"
   run_remote "$host" "sudo mkdir -p '$DEST_DIR/bin' '$DEST_DIR/conf' '$DEST_DIR/logs' '$DEST_DIR/data/themes' '$DEST_DIR/data/uploads' '$DEST_DIR/data/search-index' '$DEST_DIR/data/plugins' && sudo chown -R '$remote_user:$remote_user' '$DEST_DIR'"
@@ -175,7 +227,9 @@ deploy_remote() {
   rsync -az "$BUILD_DIR/conf/" "$host:$DEST_DIR/conf/"
   rsync -az --delete "$BUILD_DIR/data/themes/" "$host:$DEST_DIR/data/themes/"
   sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}.service" <"$service_file"
-  run_remote "$host" "sudo chown -R '$remote_user:$remote_user' '$DEST_DIR' && sudo systemctl daemon-reload && sudo systemctl enable '$SERVICE_NAME' && sudo systemctl restart '$SERVICE_NAME' && sudo systemctl --no-pager --full status '$SERVICE_NAME'"
+  sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}-backup.service" <"$backup_service_file"
+  sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}-backup.timer" <"$backup_timer_file"
+  run_remote "$host" "sudo chown -R '$remote_user:$remote_user' '$DEST_DIR' && sudo systemctl daemon-reload && sudo systemctl enable '$SERVICE_NAME' && sudo systemctl enable --now '${SERVICE_NAME}-backup.timer' && sudo systemctl restart '$SERVICE_NAME' && sudo systemctl --no-pager --full status '$SERVICE_NAME' && sudo systemctl --no-pager --full status '${SERVICE_NAME}-backup.timer'"
 }
 
 build_artifacts

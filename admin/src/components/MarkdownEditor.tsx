@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Dropdown, Space, Tooltip } from "antd";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { App, Button, Dropdown, Space, Tooltip } from "antd";
 import {
   BoldOutlined,
   ItalicOutlined,
@@ -14,15 +14,31 @@ import {
   LinkOutlined,
   EyeOutlined,
   PlusOutlined,
+  UploadOutlined,
+  PictureOutlined,
+  VideoCameraOutlined,
+  AudioOutlined,
 } from "@ant-design/icons";
 import { marked } from "marked";
 import mermaid from "mermaid";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import { uploadAttachment } from "@/api/client";
 
 interface Props {
   initialMarkdown: string;
   onChange: (markdown: string) => void;
+}
+
+interface HeadingItem {
+  depth: number;
+  title: string;
+  id: string;
+}
+
+interface MarkdownPreviewProps {
+  markdown: string;
+  className?: string;
 }
 
 function escapeRegExp(value: string): string {
@@ -37,6 +53,17 @@ function slugify(value: string): string {
     .replace(/\s+/g, "-");
 }
 
+function extractHeadings(markdown: string): HeadingItem[] {
+  return [...markdown.matchAll(/^(#{1,3})\s+(.+)$/gm)].map((match) => {
+    const title = (match[2] ?? "").replace(/[*_`]/g, "").trim();
+    return {
+      depth: (match[1] ?? "").length,
+      title,
+      id: slugify(title),
+    };
+  });
+}
+
 function renderMath(markdown: string): string {
   return markdown
     .replace(/\$\$([\s\S]+?)\$\$/g, (_match, expr: string) =>
@@ -48,26 +75,23 @@ function renderMath(markdown: string): string {
 }
 
 function renderToc(markdown: string, html: string): string {
-  const headings = [...markdown.matchAll(/^(#{1,3})\s+(.+)$/gm)].map((match) => ({
-    depth: (match[1] ?? "").length,
-    title: (match[2] ?? "").replace(/[*_`]/g, "").trim(),
-  }));
+  const headings = extractHeadings(markdown);
   if (!headings.length) return html.replace(/\[\[toc\]\]/gi, "");
   const toc = `<nav class="markdown-preview__toc"><strong>Table of contents</strong><ul>${headings
-    .map((heading) => `<li class="depth-${heading.depth}"><a href="#${slugify(heading.title)}">${heading.title}</a></li>`)
+    .map((heading) => `<li class="depth-${heading.depth}"><a href="#${heading.id}">${heading.title}</a></li>`)
     .join("")}</ul></nav>`;
   let next = html.replace(/\[\[toc\]\]/gi, toc);
   for (const heading of headings) {
     const text = heading.title;
     next = next.replace(
       new RegExp(`<h${heading.depth}>${escapeRegExp(text)}</h${heading.depth}>`),
-      `<h${heading.depth} id="${slugify(text)}">${text}</h${heading.depth}>`,
+      `<h${heading.depth} id="${heading.id}">${text}</h${heading.depth}>`,
     );
   }
   return next;
 }
 
-function renderPreview(markdown: string): string {
+export function renderMarkdownPreview(markdown: string): string {
   const withMath = renderMath(markdown);
   const html = marked.parse(withMath, { async: false, gfm: true }) as string;
   return renderToc(markdown, html).replace(
@@ -76,15 +100,9 @@ function renderPreview(markdown: string): string {
   );
 }
 
-export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
-  const [markdown, setMarkdown] = useState(initialMarkdown);
-  const [preview, setPreview] = useState(true);
-  const textarea = useRef<HTMLTextAreaElement | null>(null);
+export function MarkdownPreview({ markdown, className = "markdown-preview" }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    setMarkdown(initialMarkdown);
-  }, [initialMarkdown]);
+  const html = useMemo(() => renderMarkdownPreview(markdown), [markdown]);
 
   useEffect(() => {
     mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
@@ -93,13 +111,70 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
   useEffect(() => {
     if (!previewRef.current) return;
     void mermaid.run({ nodes: previewRef.current.querySelectorAll(".mermaid") });
-  }, [markdown, preview]);
+  }, [markdown]);
 
-  const html = useMemo(() => renderPreview(markdown), [markdown]);
+  return (
+    <div
+      ref={previewRef}
+      className={className}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+function imageExtension(type: string): string {
+  if (type === "image/jpeg") return "jpg";
+  if (type === "image/gif") return "gif";
+  if (type === "image/webp") return "webp";
+  return "png";
+}
+
+function normalizeImageFile(file: File): File {
+  if (file.name) return file;
+  const ext = imageExtension(file.type);
+  return new File([file], `pasted-image-${Date.now()}.${ext}`, { type: file.type });
+}
+
+function imageMarkdown(file: File, url: string): string {
+  const alt = file.name.replace(/\.[^.]+$/, "") || "image";
+  return `![${alt}](${url})`;
+}
+
+export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
+  const { message } = App.useApp();
+  const [markdown, setMarkdown] = useState(initialMarkdown);
+  const [preview, setPreview] = useState(true);
+  const [sidePanel, setSidePanel] = useState<"toc" | "detail">("toc");
+  const markdownRef = useRef(initialMarkdown);
+  const textarea = useRef<HTMLTextAreaElement | null>(null);
+  const imageInput = useRef<HTMLInputElement | null>(null);
+  const attachmentInput = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    markdownRef.current = initialMarkdown;
+    setMarkdown(initialMarkdown);
+  }, [initialMarkdown]);
+
+  const headings = useMemo(() => extractHeadings(markdown), [markdown]);
+  const detail = useMemo(
+    () => ({
+      chars: markdown.length,
+      words: markdown.trim() ? markdown.trim().split(/\s+/).length : 0,
+      images: (markdown.match(/!\[[^\]]*]\([^)]+\)/g) ?? []).length,
+      links: (markdown.match(/(?<!!)\[[^\]]+]\([^)]+\)/g) ?? []).length,
+    }),
+    [markdown],
+  );
 
   const update = (next: string) => {
+    markdownRef.current = next;
     setMarkdown(next);
     onChange(next);
+  };
+
+  const replaceText = (from: string, to: string) => {
+    const next = markdownRef.current.replace(from, to);
+    update(next);
   };
 
   const insert = (before: string, after = "", placeholder = "") => {
@@ -115,6 +190,99 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
       el.selectionStart = start + before.length;
       el.selectionEnd = start + before.length + selected.length;
     });
+  };
+
+  const insertBlock = (value: string) => {
+    const el = textarea.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const prefix = start > 0 && !markdown.slice(0, start).endsWith("\n") ? "\n\n" : "";
+    const suffix = end < markdown.length && !markdown.slice(end).startsWith("\n") ? "\n\n" : "";
+    const next = `${markdown.slice(0, start)}${prefix}${value}${suffix}${markdown.slice(end)}`;
+    update(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = start + prefix.length + value.length;
+      el.selectionStart = cursor;
+      el.selectionEnd = cursor;
+    });
+  };
+
+  const uploadFiles = async (files: File[], kind: "image" | "attachment") => {
+    if (!files.length) return;
+    const hide = message.loading("Uploading...", 0);
+    try {
+      const snippets: string[] = [];
+      for (const file of files) {
+        const uploaded = await uploadAttachment(file);
+        snippets.push(kind === "image" ? imageMarkdown(file, uploaded.url) : `[${file.name}](${uploaded.url})`);
+      }
+      insertBlock(snippets.join("\n\n"));
+      void message.success(files.length === 1 ? "Uploaded" : "Files uploaded");
+    } catch (error) {
+      void message.error(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      hide();
+    }
+  };
+
+  const applyLinePrefix = (prefix: string) => {
+    const el = textarea.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const lineStart = markdown.lastIndexOf("\n", start - 1) + 1;
+    const lineEndIndex = markdown.indexOf("\n", end);
+    const lineEnd = lineEndIndex === -1 ? markdown.length : lineEndIndex;
+    const block = markdown.slice(lineStart, lineEnd);
+    const replacement = block.split("\n").map((line) => `${prefix}${line}`).join("\n");
+    update(`${markdown.slice(0, lineStart)}${replacement}${markdown.slice(lineEnd)}`);
+  };
+
+  const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = [...event.clipboardData.files]
+      .filter((file) => file.type.startsWith("image/"))
+      .map(normalizeImageFile);
+    if (!files.length) return;
+
+    event.preventDefault();
+    const el = textarea.current;
+    const start = el?.selectionStart ?? markdownRef.current.length;
+    const end = el?.selectionEnd ?? start;
+    const placeholders = files.map((file, index) => {
+      const token = `uploading-image-${Date.now()}-${index}`;
+      return {
+        file,
+        token,
+        markdown: `![Uploading ${file.name}...](${token})`,
+      };
+    });
+    const insertion = placeholders.map((item) => item.markdown).join("\n\n");
+    const next = `${markdownRef.current.slice(0, start)}${insertion}${markdownRef.current.slice(end)}`;
+    update(next);
+
+    requestAnimationFrame(() => {
+      el?.focus();
+      if (el) {
+        const cursor = start + insertion.length;
+        el.selectionStart = cursor;
+        el.selectionEnd = cursor;
+      }
+    });
+
+    const hide = message.loading("Uploading image...", 0);
+    try {
+      for (const item of placeholders) {
+        const uploaded = await uploadAttachment(item.file);
+        replaceText(item.markdown, imageMarkdown(item.file, uploaded.url));
+      }
+      void message.success(files.length === 1 ? "Image uploaded" : "Images uploaded");
+    } catch (error) {
+      void message.error(error instanceof Error ? error.message : "Image upload failed");
+    } finally {
+      hide();
+    }
   };
 
   const clearFormat = () => {
@@ -138,18 +306,40 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
           <Tooltip title="Redo"><Button size="small" icon={<RedoOutlined />} onClick={() => document.execCommand("redo")} /></Tooltip>
           <Tooltip title="Bold"><Button size="small" icon={<BoldOutlined />} onClick={() => insert("**", "**", "bold")} /></Tooltip>
           <Tooltip title="Italic"><Button size="small" icon={<ItalicOutlined />} onClick={() => insert("_", "_", "italic")} /></Tooltip>
+          <Tooltip title="Underline"><Button size="small" onClick={() => insert("<u>", "</u>", "underline")}>U</Button></Tooltip>
           <Tooltip title="Strikethrough"><Button size="small" icon={<StrikethroughOutlined />} onClick={() => insert("~~", "~~", "deleted")} /></Tooltip>
+          <Tooltip title="Highlight"><Button size="small" onClick={() => insert("<mark>", "</mark>", "mark")}>Mark</Button></Tooltip>
           <Tooltip title="Inline code"><Button size="small" icon={<CodeOutlined />} onClick={() => insert("`", "`", "code")} /></Tooltip>
+          <Tooltip title="Quote"><Button size="small" onClick={() => applyLinePrefix("> ")}>Quote</Button></Tooltip>
+          <Dropdown
+            menu={{
+              items: [
+                { key: "h1", label: "Heading 1", onClick: () => applyLinePrefix("# ") },
+                { key: "h2", label: "Heading 2", onClick: () => applyLinePrefix("## ") },
+                { key: "h3", label: "Heading 3", onClick: () => applyLinePrefix("### ") },
+                { key: "hr", label: "Divider", onClick: () => insertBlock("---") },
+              ],
+            }}
+          >
+            <Button size="small">H</Button>
+          </Dropdown>
           <Tooltip title="Bullet list"><Button size="small" icon={<UnorderedListOutlined />} onClick={() => insert("- ", "", "list item")} /></Tooltip>
           <Tooltip title="Numbered list"><Button size="small" icon={<OrderedListOutlined />} onClick={() => insert("1. ", "", "list item")} /></Tooltip>
           <Tooltip title="Link"><Button size="small" icon={<LinkOutlined />} onClick={() => insert("[", "](https://)", "link text")} /></Tooltip>
+          <Tooltip title="Image"><Button size="small" icon={<PictureOutlined />} onClick={() => imageInput.current?.click()} /></Tooltip>
           <Tooltip title="Table"><Button size="small" icon={<TableOutlined />} onClick={() => insert("\n| Column | Column |\n| --- | --- |\n| ", " | value |\n", "value")} /></Tooltip>
           <Tooltip title="Clear format"><Button size="small" icon={<ClearOutlined />} onClick={clearFormat} /></Tooltip>
           <Dropdown
             menu={{
               items: [
+                { key: "attachment", label: "Attachment", icon: <UploadOutlined />, onClick: () => attachmentInput.current?.click() },
+                { key: "table", label: "Add table", onClick: () => insertBlock("| Column | Column |\n| --- | --- |\n| value | value |") },
+                { key: "video", label: "Video", icon: <VideoCameraOutlined />, onClick: () => insertBlock('<video controls src="https://example.com/video.mp4"></video>') },
+                { key: "audio", label: "Audio", icon: <AudioOutlined />, onClick: () => insertBlock('<audio controls src="https://example.com/audio.mp3"></audio>') },
+                { key: "iframe", label: "Iframe", onClick: () => insertBlock('<iframe src="https://example.com" width="100%" height="360"></iframe>') },
                 { key: "toc", label: "TOC", onClick: () => insert("\n[[toc]]\n") },
                 { key: "detail", label: "Detail block", onClick: () => insert("\n<details>\n<summary>", "</summary>\n\nDetail content\n</details>\n", "Title") },
+                { key: "columns", label: "Column Card", onClick: () => insertBlock('<div class="columns">\n\n<div>\n\nColumn 1\n\n</div>\n\n<div>\n\nColumn 2\n\n</div>\n\n</div>') },
                 { key: "mermaid", label: "Mermaid", onClick: () => insert("\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n") },
                 { key: "math", label: "Math formula", onClick: () => insert("\n$$\n", "\n$$\n", "E = mc^2") },
                 { key: "code", label: "Code block", onClick: () => insert("\n```text\n", "\n```\n", "code") },
@@ -162,6 +352,27 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
             {preview ? "Hide preview" : "Preview"}
           </Button>
         </Space>
+        <input
+          ref={imageInput}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(event) => {
+            void uploadFiles([...(event.target.files ?? [])], "image");
+            event.currentTarget.value = "";
+          }}
+        />
+        <input
+          ref={attachmentInput}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            void uploadFiles([...(event.target.files ?? [])], "attachment");
+            event.currentTarget.value = "";
+          }}
+        />
       </div>
       <div className={`markdown-editor-grid${preview ? "" : " markdown-editor-grid--single"}`}>
         <textarea
@@ -170,14 +381,37 @@ export function MarkdownEditor({ initialMarkdown, onChange }: Props) {
           aria-label="Post body"
           value={markdown}
           onChange={(event) => update(event.target.value)}
+          onPaste={handlePaste}
           placeholder="Write your post in markdown..."
         />
+        {preview ? <MarkdownPreview markdown={markdown} /> : null}
         {preview ? (
-          <div
-            ref={previewRef}
-            className="markdown-preview"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          <aside className="markdown-inspector">
+            <div className="markdown-inspector__tabs">
+              <button type="button" className={sidePanel === "toc" ? "active" : ""} onClick={() => setSidePanel("toc")}>Toc</button>
+              <button type="button" className={sidePanel === "detail" ? "active" : ""} onClick={() => setSidePanel("detail")}>Detail</button>
+            </div>
+            {sidePanel === "toc" ? (
+              <div className="markdown-inspector__body">
+                {headings.length ? (
+                  <ul className="markdown-inspector__toc">
+                    {headings.map((heading, index) => (
+                      <li key={`${heading.id}-${index}`} className={`depth-${heading.depth}`}>{heading.title}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="markdown-inspector__empty">No Toc available</p>
+                )}
+              </div>
+            ) : (
+              <dl className="markdown-inspector__detail">
+                <div><dt>Characters</dt><dd>{detail.chars}</dd></div>
+                <div><dt>Words</dt><dd>{detail.words}</dd></div>
+                <div><dt>Images</dt><dd>{detail.images}</dd></div>
+                <div><dt>Links</dt><dd>{detail.links}</dd></div>
+              </dl>
+            )}
+          </aside>
         ) : null}
       </div>
     </div>
