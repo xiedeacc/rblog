@@ -400,80 +400,85 @@ export function PostEditPage() {
     <Card className="post-edit-card">
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <Form form={form} layout="vertical" onValuesChange={() => setAutoSaveDirty(true)}>
-          <div className="post-edit-sticky-top">
-            <div className="post-edit-header">
-              <Title level={3} style={{ margin: 0 }}>
-                {isNew ? "New post" : post.data?.title || "Edit post"}
-              </Title>
-              <Space wrap>
-                <Button icon={<ArrowLeftOutlined />} onClick={backToPosts}>
-                  Back
-                </Button>
-                <Button
-                  icon={<SettingOutlined />}
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  Setting
-                </Button>
-                {isHtmlPost ? (
-                  <Button onClick={openConvertPreview}>
-                    Convert to Markdown
-                  </Button>
+          <MarkdownEditor
+            initialMarkdown={markdown}
+            onChange={handleMarkdownChange}
+            stickyHeader={(
+              <div className="post-edit-sticky-top">
+                <div className="post-edit-header">
+                  <Title level={3} style={{ margin: 0 }}>
+                    {isNew ? "New post" : post.data?.title || "Edit post"}
+                  </Title>
+                  <Space wrap>
+                    <Button icon={<ArrowLeftOutlined />} onClick={backToPosts}>
+                      Back
+                    </Button>
+                    <Button
+                      icon={<SettingOutlined />}
+                      onClick={() => setSettingsOpen(true)}
+                    >
+                      Setting
+                    </Button>
+                    {isHtmlPost ? (
+                      <Button onClick={openConvertPreview}>
+                        Convert to Markdown
+                      </Button>
+                    ) : null}
+                    <Button
+                      icon={<SaveOutlined />}
+                      type="primary"
+                      loading={save.isPending}
+                      onClick={() => save.mutate()}
+                    >
+                      Save
+                    </Button>
+                    {!isNew && (
+                      <Button
+                        icon={<SendOutlined />}
+                        loading={publish.isPending}
+                        onClick={() => publish.mutate()}
+                      >
+                        {published ? "Unpublish" : "Publish"}
+                      </Button>
+                    )}
+                  </Space>
+                </div>
+
+                {!published ? (
+                  <Text type={autoSaveStatus.startsWith("Autosave failed") ? "danger" : "secondary"}>
+                    {autoSaveStatus}
+                  </Text>
                 ) : null}
-              <Button
-                  icon={<SaveOutlined />}
-                  type="primary"
-                  loading={save.isPending}
-                  onClick={() => save.mutate()}
+
+                {hasMissingSnapshot ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="This imported post has no content snapshot"
+                    description="The original data contains the post metadata, but no base/head/release snapshot, so there is no body content to show."
+                  />
+                ) : null}
+
+                {rawType !== "markdown" ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={`This post was imported as ${rawType.toUpperCase()}`}
+                    description="The editor shows the original source format on the left. For HTML posts, that means HTML source rather than Markdown."
+                    action={isHtmlPost ? <Button size="small" onClick={openConvertPreview}>Convert</Button> : undefined}
+                  />
+                ) : null}
+
+                <Form.Item
+                  name="title"
+                  label="Title"
+                  rules={[{ required: true, message: "Title is required" }]}
                 >
-                  Save
-                </Button>
-                {!isNew && (
-                  <Button
-                    icon={<SendOutlined />}
-                    loading={publish.isPending}
-                    onClick={() => publish.mutate()}
-                  >
-                    {published ? "Unpublish" : "Publish"}
-                  </Button>
-                )}
-              </Space>
-            </div>
-
-            {!published ? (
-              <Text type={autoSaveStatus.startsWith("Autosave failed") ? "danger" : "secondary"}>
-                {autoSaveStatus}
-              </Text>
-            ) : null}
-
-            {hasMissingSnapshot ? (
-              <Alert
-                type="warning"
-                showIcon
-                message="This imported post has no content snapshot"
-                description="The original data contains the post metadata, but no base/head/release snapshot, so there is no body content to show."
-              />
-            ) : null}
-
-            {rawType !== "markdown" ? (
-              <Alert
-                type="info"
-                showIcon
-                message={`This post was imported as ${rawType.toUpperCase()}`}
-                description="The editor shows the original source format on the left. For HTML posts, that means HTML source rather than Markdown."
-                action={isHtmlPost ? <Button size="small" onClick={openConvertPreview}>Convert</Button> : undefined}
-              />
-            ) : null}
-
-          <Form.Item
-            name="title"
-            label="Title"
-            rules={[{ required: true, message: "Title is required" }]}
-          >
-            <Input placeholder="An informative title" />
-          </Form.Item>
-          </div>
-          <MarkdownEditor initialMarkdown={markdown} onChange={handleMarkdownChange} />
+                  <Input placeholder="An informative title" />
+                </Form.Item>
+              </div>
+            )}
+          />
         </Form>
       </Space>
       <Drawer
