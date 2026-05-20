@@ -38,6 +38,10 @@ pub async fn build_services(
         index.clone(),
         pipeline.clone(),
     ));
+    let backfilled = posts.backfill_missing_excerpts().await?;
+    if backfilled > 0 {
+        tracing::info!(backfilled, "generated missing post excerpts");
+    }
     let pages = Arc::new(PageService::new(
         pool.clone(),
         index.clone(),

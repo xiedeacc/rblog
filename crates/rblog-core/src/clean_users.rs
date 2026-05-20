@@ -131,6 +131,16 @@ impl UserService {
         if !self.hasher.verify(password, &hash)? {
             return Err(ServiceError::Auth("unknown user or wrong password".into()));
         }
+        if self.hasher.needs_rehash(&hash) {
+            let upgraded = self.hasher.hash(password)?;
+            sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE name = ?")
+                .bind(upgraded)
+                .bind(Utc::now().to_rfc3339())
+                .bind(name)
+                .execute(sqlite(&self.pool)?)
+                .await
+                .map_err(map_sqlx)?;
+        }
         let user = user_from_row(row)?;
         Ok(AuthenticatedUser {
             name: user.metadata.name.clone(),

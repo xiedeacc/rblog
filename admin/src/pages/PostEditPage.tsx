@@ -53,6 +53,7 @@ interface PostsSearch {
   visible: string | undefined;
   sort: string | undefined;
   source: string | undefined;
+  returnTo: string | undefined;
 }
 
 function compactPostsSearch(search: PostsSearch): PostsSearch {
@@ -64,6 +65,7 @@ function compactPostsSearch(search: PostsSearch): PostsSearch {
     visible: search.visible,
     sort: search.sort,
     source: search.source,
+    returnTo: search.returnTo,
   };
 }
 
@@ -331,8 +333,12 @@ export function PostEditPage() {
   const hasMissingSnapshot =
     !isNew && post.data && !post.data.raw_markdown && !post.data.content_html;
   const backToPosts = () => {
+    if (listSearch.returnTo?.startsWith("/")) {
+      window.location.assign(listSearch.returnTo);
+      return;
+    }
     const target = listSearch.source === "deleted" ? "/posts/deleted" : "/posts";
-    void navigate({ to: target, search: { ...listSearch, source: undefined } });
+    void navigate({ to: target, search: { ...listSearch, source: undefined, returnTo: undefined } });
   };
   const openConvertPreview = () => {
     setConvertedMarkdown(htmlToMarkdown(markdown || post.data?.content_html || ""));

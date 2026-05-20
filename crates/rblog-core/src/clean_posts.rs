@@ -119,6 +119,33 @@ impl PostService {
         self.admin_detail(name).await
     }
 
+    pub async fn backfill_missing_excerpts(&self) -> Result<usize, ServiceError> {
+        let rows = sqlx::query(
+            "SELECT name, markdown, html FROM posts WHERE excerpt IS NULL OR TRIM(excerpt) = ''",
+        )
+        .fetch_all(sqlite(&self.pool)?)
+        .await
+        .map_err(map_sqlx)?;
+        let mut updated = 0;
+        for row in rows {
+            let name: String = row.get("name");
+            let markdown: String = row.get("markdown");
+            let html: String = row.get("html");
+            let excerpt = excerpt_from_content(&markdown, &html);
+            if excerpt.trim().is_empty() {
+                continue;
+            }
+            sqlx::query("UPDATE posts SET excerpt = ?, updated_at = updated_at WHERE name = ?")
+                .bind(excerpt)
+                .bind(name)
+                .execute(sqlite(&self.pool)?)
+                .await
+                .map_err(map_sqlx)?;
+            updated += 1;
+        }
+        Ok(updated)
+    }
+
     pub async fn update_settings(
         &self,
         name: &str,
@@ -139,7 +166,11 @@ impl PostService {
             detail.slug = slug;
         }
         if let Some(excerpt) = settings.excerpt {
-            detail.excerpt = excerpt;
+            detail.excerpt = if excerpt.trim().is_empty() {
+                excerpt_from_content(&detail.raw_markdown, &detail.content_html)
+            } else {
+                excerpt
+            };
         }
         if let Some(visible) = settings.visible {
             detail.visible = visible;
@@ -382,18 +413,26 @@ impl PostService {
         let categories = terms(&self.pool, "post_categories", "category_name", &name).await?;
         let comments_count = comment_count(&self.pool, "Post", &name).await?;
         let slug: String = row.get("slug");
+        let html: String = row.get("html");
+        let markdown: String = row.get("markdown");
+        let stored_excerpt = row
+            .try_get::<Option<String>, _>("excerpt")
+            .unwrap_or_default()
+            .unwrap_or_default();
+        let excerpt = if stored_excerpt.trim().is_empty() {
+            excerpt_from_content(&markdown, &html)
+        } else {
+            stored_excerpt
+        };
         Ok(PostDetail {
             name: name.clone(),
             title: row.get("title"),
             slug: slug.clone(),
             permalink: permalink::post(&slug),
-            content_html: row.get("html"),
-            raw_markdown: row.get("markdown"),
+            content_html: html,
+            raw_markdown: markdown,
             raw_type: row.get("raw_type"),
-            excerpt: row
-                .try_get::<Option<String>, _>("excerpt")
-                .unwrap_or_default()
-                .unwrap_or_default(),
+            excerpt,
             publish_time: parse_dt(
                 row.try_get::<Option<String>, _>("publish_time")
                     .ok()
@@ -744,6 +783,32 @@ fn parse_dt(value: Option<String>) -> Option<DateTime<Utc>> {
     value
         .and_then(|raw| DateTime::parse_from_rfc3339(&raw).ok())
         .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn excerpt_from_content(markdown: &str, html: &str) -> String {
+    let source = if markdown.trim().is_empty() { html } else { markdown };
+    let mut text = String::with_capacity(source.len().min(512));
+    let mut in_tag = false;
+    let mut in_entity = false;
+    for ch in source.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' if in_tag => {
+                in_tag = false;
+                text.push(' ');
+            }
+            '&' if !in_tag => in_entity = true,
+            ';' if in_entity => {
+                in_entity = false;
+                text.push(' ');
+            }
+            _ if in_tag || in_entity => {}
+            '#' | '*' | '_' | '`' | '[' | ']' | '(' | ')' | '>' | '-' => text.push(' '),
+            _ => text.push(ch),
+        }
+    }
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    normalized.chars().take(180).collect()
 }
 
 fn non_empty_owned(value: String) -> Option<String> {

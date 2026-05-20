@@ -44,6 +44,7 @@ sudo_write_remote() {
 
 write_config() {
   local dst="$1"
+  local secure_cookie="${2:-false}"
   mkdir -p "$(dirname "$dst")"
   cat >"$dst" <<EOF_CONFIG
 [server]
@@ -63,7 +64,7 @@ admin_dist = "${DEST_DIR}/bin/admin"
 
 [session]
 cookie_name = "rblog_session"
-secure = false
+secure = ${secure_cookie}
 max_age_days = 14
 
 [storage]
@@ -151,7 +152,7 @@ build_artifacts() {
   chmod +x "$BUILD_DIR/bin/rblog-backup"
   cp -R "$ROOT_DIR/admin/dist/." "$BUILD_DIR/bin/admin/"
   cp -R "$ROOT_DIR/crates/rblog-theme/default/." "$BUILD_DIR/data/themes/default/"
-  write_config "$BUILD_DIR/conf/rblog.toml"
+  write_config "$BUILD_DIR/conf/rblog.toml" false
 }
 
 stage_binary_for_arch() {
@@ -217,6 +218,7 @@ deploy_remote() {
   local remote_arch
   remote_arch="$(ssh "$host" "uname -m")"
   stage_binary_for_arch "$remote_arch"
+  write_config "$BUILD_DIR/conf/rblog.toml" true
   write_service "$service_file" "$remote_user"
   write_backup_service "$backup_service_file" "$remote_user"
   write_backup_timer "$backup_timer_file"
