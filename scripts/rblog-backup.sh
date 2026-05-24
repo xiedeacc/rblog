@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKUP_REPO_URL="${RBLOG_BACKUP_REPO_URL:-https://github.com/xiedeacc/blog_data.git}"
+BACKUP_REPO_URL="${RBLOG_BACKUP_REPO_URL:-git@github.com:xiedeacc/blog_data.git}"
 MAX_FILE_BYTES="${RBLOG_BACKUP_MAX_FILE_BYTES:-52428800}"
 SPLIT_BYTES="${RBLOG_BACKUP_SPLIT_BYTES:-49000000}"
 
 script_path="$(readlink -f "${BASH_SOURCE[0]}")"
 script_dir="$(dirname "$script_path")"
 install_dir="${RBLOG_BACKUP_ROOT:-$(dirname "$script_dir")}"
-work_dir="${RBLOG_BACKUP_WORK_DIR:-${install_dir}.backup-worktree}"
+work_dir="${RBLOG_BACKUP_WORK_DIR:-${install_dir}/.backup-worktree}"
+work_dir_name="$(basename "$work_dir")"
 
 log() {
   printf '[rblog-backup] %s\n' "$*"
@@ -18,6 +19,14 @@ require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     printf 'required command not found: %s\n' "$1" >&2
     exit 127
+  fi
+}
+
+checkout_main_branch() {
+  if git -C "$work_dir" show-ref --verify --quiet refs/remotes/origin/main; then
+    git -C "$work_dir" checkout -B main origin/main >/dev/null
+  else
+    git -C "$work_dir" checkout -B main >/dev/null
   fi
 }
 
@@ -45,13 +54,14 @@ ensure_repo() {
   if [[ -d "$work_dir/.git" ]]; then
     git -C "$work_dir" remote set-url origin "$BACKUP_REPO_URL"
     git -C "$work_dir" fetch origin main >/dev/null 2>&1 || true
-    git -C "$work_dir" checkout main >/dev/null 2>&1 || true
+    checkout_main_branch
     git -C "$work_dir" pull --ff-only origin main >/dev/null 2>&1 || true
     return
   fi
 
   rm -rf "$work_dir"
   if git clone "$BACKUP_REPO_URL" "$work_dir"; then
+    checkout_main_branch
     return
   fi
 
@@ -65,6 +75,8 @@ sync_source() {
   rsync -a --delete \
     --exclude '/logs/' \
     --exclude '/logs/**' \
+    --exclude "/${work_dir_name}/" \
+    --exclude "/${work_dir_name}/**" \
     --exclude '/.git/' \
     --exclude '/.git/**' \
     "$install_dir/" "$work_dir/"
@@ -118,6 +130,9 @@ commit_and_push_if_changed() {
   git -C "$work_dir" add -A
   if git -C "$work_dir" diff --cached --quiet; then
     log "no changes detected"
+    if git -C "$work_dir" rev-parse --verify HEAD >/dev/null 2>&1; then
+      git -C "$work_dir" push origin main
+    fi
     return
   fi
 

@@ -6,7 +6,7 @@ SERVICE_NAME="rblog"
 PORT="10011"
 DEST_DIR="/usr/local/blog"
 REMOTE_HOST="ubuntu@aws"
-BACKUP_REPO_URL="https://github.com/xiedeacc/blog_data.git"
+BACKUP_REPO_URL="git@github.com:xiedeacc/blog_data.git"
 
 usage() {
   printf 'Usage: %s [local|aws|all]\n' "$0"
@@ -115,6 +115,7 @@ Type=oneshot
 User=${run_user}
 WorkingDirectory=${DEST_DIR}
 Environment=RBLOG_BACKUP_REPO_URL=${BACKUP_REPO_URL}
+Environment=RBLOG_BACKUP_WORK_DIR=${DEST_DIR}/.backup-worktree
 ExecStart=${DEST_DIR}/bin/rblog-backup
 EOF_SERVICE
 }
@@ -124,11 +125,11 @@ write_backup_timer() {
   mkdir -p "$(dirname "$dst")"
   cat >"$dst" <<EOF_TIMER
 [Unit]
-Description=Run rblog data backup every 30 minutes
+Description=Run rblog data backup every hour
 
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=30min
+OnUnitActiveSec=1h
 AccuracySec=1min
 Persistent=true
 Unit=rblog-backup.service
