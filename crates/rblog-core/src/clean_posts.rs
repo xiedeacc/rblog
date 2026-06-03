@@ -224,19 +224,15 @@ impl PostService {
 
     pub async fn increment_visit(&self, name: &str) -> Result<i32, ServiceError> {
         let pool = sqlite(&self.pool)?;
-        let res = sqlx::query("UPDATE posts SET visits = visits + 1 WHERE name = ?")
-            .bind(name)
-            .execute(pool)
-            .await
-            .map_err(map_sqlx)?;
-        if res.rows_affected() == 0 {
+        let row =
+            sqlx::query("UPDATE posts SET visits = visits + 1 WHERE name = ? RETURNING visits")
+                .bind(name)
+                .fetch_optional(pool)
+                .await
+                .map_err(map_sqlx)?;
+        let Some(row) = row else {
             return Err(crate::not_found("Post", name));
-        }
-        let row = sqlx::query("SELECT visits FROM posts WHERE name = ?")
-            .bind(name)
-            .fetch_one(pool)
-            .await
-            .map_err(map_sqlx)?;
+        };
         to_i32(row.get::<i64, _>("visits"), "visit count")
     }
 

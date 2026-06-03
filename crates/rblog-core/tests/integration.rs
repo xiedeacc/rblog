@@ -1,5 +1,6 @@
 //! End-to-end tests for the core service layer.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rblog_auth::PasswordHasher;
@@ -130,6 +131,63 @@ async fn draft_publish_and_list_post() {
         .expect("by slug");
     assert!(detail.published);
     assert_eq!(detail.tags, vec!["rust".to_owned()]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_post_visit_increments_are_exact() {
+    let services = setup().await;
+    services
+        .posts
+        .draft(DraftPost {
+            name: "popular".into(),
+            title: "Popular Post".into(),
+            slug: "popular".into(),
+            markdown: "# Popular\n\nLots of readers.".into(),
+            owner: "admin".into(),
+            template: None,
+            cover: None,
+            categories: None,
+            tags: None,
+            excerpt: None,
+            priority: None,
+            pinned: None,
+            allow_comment: None,
+            visible: Visible::default(),
+        })
+        .await
+        .expect("draft");
+    services
+        .posts
+        .publish("popular", PublishOptions::default())
+        .await
+        .expect("publish");
+
+    let mut tasks = Vec::new();
+    for _ in 0..64 {
+        let posts = services.posts.clone();
+        tasks.push(tokio::spawn(async move {
+            posts.increment_visit("popular").await.expect("increment")
+        }));
+    }
+
+    let mut returned = BTreeSet::new();
+    for task in tasks {
+        returned.insert(task.await.expect("join"));
+    }
+
+    assert_eq!(
+        returned.len(),
+        64,
+        "each caller should see a distinct count"
+    );
+    assert_eq!(returned.first().copied(), Some(1));
+    assert_eq!(returned.last().copied(), Some(64));
+    let detail = services
+        .posts
+        .admin_detail("popular")
+        .await
+        .expect("detail");
+    assert_eq!(detail.visits, 64);
 }
 
 #[tokio::test]

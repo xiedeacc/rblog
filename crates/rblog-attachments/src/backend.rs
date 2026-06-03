@@ -255,7 +255,9 @@ impl StorageBackend for S3Storage {
 fn object_path(key: &str) -> Result<ObjectPath, StorageError> {
     if key.starts_with('/')
         || key.contains('\\')
-        || key.split('/').any(|segment| segment.is_empty() || segment == "..")
+        || key
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "..")
     {
         return Err(StorageError::InvalidPath(key.to_owned()));
     }

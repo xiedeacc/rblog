@@ -199,16 +199,15 @@ impl PageService {
     }
 
     pub async fn increment_visit(&self, name: &str) -> Result<i32, ServiceError> {
-        sqlx::query("UPDATE pages SET visits = visits + 1 WHERE name = ?")
-            .bind(name)
-            .execute(sqlite(&self.pool)?)
-            .await
-            .map_err(map_sqlx)?;
-        let row = sqlx::query("SELECT visits FROM pages WHERE name = ?")
-            .bind(name)
-            .fetch_one(sqlite(&self.pool)?)
-            .await
-            .map_err(map_sqlx)?;
+        let row =
+            sqlx::query("UPDATE pages SET visits = visits + 1 WHERE name = ? RETURNING visits")
+                .bind(name)
+                .fetch_optional(sqlite(&self.pool)?)
+                .await
+                .map_err(map_sqlx)?;
+        let Some(row) = row else {
+            return Err(not_found("Page", name));
+        };
         to_i32(row.get("visits"), "visits")
     }
 }
