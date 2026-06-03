@@ -104,10 +104,11 @@ impl PostService {
         let now = Utc::now();
         let pool = sqlite(&self.pool)?;
         let res = sqlx::query(
-            "UPDATE posts SET markdown = ?, html = ?, raw_type = 'markdown', updated_at = ? WHERE name = ?",
+            "UPDATE posts SET markdown = ?, html = ?, raw_type = 'markdown', excerpt = ?, updated_at = ? WHERE name = ?",
         )
         .bind(markdown)
         .bind(&rendered.html)
+        .bind(&rendered.excerpt)
         .bind(now.to_rfc3339())
         .bind(name)
         .execute(pool)
@@ -786,7 +787,11 @@ fn parse_dt(value: Option<String>) -> Option<DateTime<Utc>> {
 }
 
 fn excerpt_from_content(markdown: &str, html: &str) -> String {
-    let source = if markdown.trim().is_empty() { html } else { markdown };
+    let source = if markdown.trim().is_empty() {
+        html
+    } else {
+        markdown
+    };
     let mut text = String::with_capacity(source.len().min(512));
     let mut in_tag = false;
     let mut in_entity = false;

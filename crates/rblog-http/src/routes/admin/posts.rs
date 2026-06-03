@@ -315,6 +315,8 @@ pub async fn update_content(
     Path(name): Path<String>,
     Json(body): Json<UpdateContent>,
 ) -> Result<Json<PostDetail>, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    let content_changed = previous.raw_markdown != body.markdown;
     state
         .services
         .posts
@@ -328,7 +330,7 @@ pub async fn update_content(
             PostSettingsUpdate {
                 title: body.title,
                 slug: body.slug,
-                excerpt: body.excerpt,
+                excerpt: if content_changed { None } else { body.excerpt },
                 visible: body.visible,
                 cover: body.cover,
                 template: body.template,

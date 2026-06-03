@@ -229,7 +229,10 @@ async fn full_post_lifecycle_via_admin_api() {
     let update = h
         .client
         .put(h.url("/api/admin/posts/hello-rust"))
-        .json(&json!({"markdown": "# Hello v2"}))
+        .json(&json!({
+            "markdown": "# Hello v2\n\nUpdated body summary.",
+            "excerpt": "stale summary from the edit form"
+        }))
         .send()
         .await
         .unwrap();
@@ -239,6 +242,21 @@ async fn full_post_lifecycle_via_admin_api() {
         .as_str()
         .unwrap()
         .contains("Hello v2"));
+    assert_eq!(updated["excerpt"], "Hello v2 Updated body summary.");
+
+    let custom_excerpt = h
+        .client
+        .put(h.url("/api/admin/posts/hello-rust"))
+        .json(&json!({
+            "markdown": "# Hello v2\n\nUpdated body summary.",
+            "excerpt": "Custom summary"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(custom_excerpt.status(), 200);
+    let custom_excerpt_body: serde_json::Value = custom_excerpt.json().await.unwrap();
+    assert_eq!(custom_excerpt_body["excerpt"], "Custom summary");
 
     // Unpublish.
     let unpub = h
