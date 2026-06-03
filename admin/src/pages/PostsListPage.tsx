@@ -30,6 +30,7 @@ import { useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import {
+  createPost,
   listPosts,
   type PostSummary,
   softDeletePost,
@@ -77,6 +78,23 @@ function visibilityLabel(value: string): string {
 function normalizeStatus(value: string | undefined): "any" | "published" | "draft" {
   if (value === "published" || value === "draft") return value;
   return "any";
+}
+
+function buildTradingCalendarPost(now = dayjs()) {
+  const cycleStart = now.day() === 0 ? now.startOf("day") : now.subtract(now.day(), "day").startOf("day");
+  const monday = cycleStart.add(1, "day");
+  const friday = cycleStart.add(5, "day");
+  const weekdays = Array.from({ length: 5 }, (_, index) => monday.add(index, "day"));
+  const start = monday.format("YYYYMMDD");
+  const end = friday.format("YYYYMMDD");
+  const slug = `trading-calendar-${start}-${end}`;
+
+  return {
+    name: slug,
+    title: `交易日历——${start}-${end}`,
+    slug,
+    markdown: weekdays.map((day) => `## ${day.format("YYYYMMDD")}`).join("\n\n\n\n"),
+  };
 }
 
 export function PostsListPage() {
@@ -220,6 +238,22 @@ export function PostsListPage() {
     onError: (err) => void message.error(err instanceof Error ? err.message : "Action failed"),
   });
 
+  const createTradingPost = useMutation({
+    mutationFn: async () => createPost({ ...buildTradingCalendarPost(), visible: "PUBLIC" }),
+    onSuccess: (detail) => {
+      void message.success("Draft created");
+      void qc.invalidateQueries({ queryKey: ["posts"] });
+      void navigate({
+        to: "/posts/$name",
+        params: { name: detail.name },
+        search: listSearch,
+      });
+    },
+    onError: (err) => {
+      void message.error(err instanceof Error ? err.message : "Create failed");
+    },
+  });
+
   const toggleSelected = (name: string, checked: boolean) => {
     setSelected((items) => (checked ? [...items, name] : items.filter((item) => item !== name)));
   };
@@ -316,6 +350,14 @@ export function PostsListPage() {
               onClick={() => navigate({ to: "/posts/new", search: listSearch })}
             >
               New
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusCircleOutlined />}
+              loading={createTradingPost.isPending}
+              onClick={() => createTradingPost.mutate()}
+            >
+              New交易博客
             </Button>
           </Space>
         </header>

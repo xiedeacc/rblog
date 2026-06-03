@@ -855,7 +855,12 @@ a {
 
 .post-header h1 { font-size: 2.25rem; margin: 0 0 .5rem; }
 .post-meta { color: var(--earth-muted); margin-bottom: 1.5rem; }
-.post-content img { max-width: 100%; height: auto; }
+.post-content img {
+  display: block;
+  max-width: 50%;
+  height: auto;
+  margin: 1.5rem auto;
+}
 .post-content pre { padding: 1rem; overflow-x: auto; border-radius: 6px; background: #fff; border: 1px solid var(--earth-line); }
 .post-content blockquote { border-left: 3px solid var(--earth-blue); margin-left: 0; padding-left: 1rem; color: var(--earth-muted); }
 
