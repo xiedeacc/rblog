@@ -210,6 +210,9 @@ fn default_sanitizer() -> ammonia::Builder<'static> {
 fn extract_plaintext<'a>(node: &'a AstNode<'a>) -> String {
     fn walk<'a>(n: &'a AstNode<'a>, out: &mut String) {
         let data = n.data.borrow();
+        if matches!(data.value, NodeValue::Image(_)) {
+            return;
+        }
         match &data.value {
             NodeValue::Text(t) => out.push_str(t),
             NodeValue::Code(c) => out.push_str(&c.literal),
@@ -355,6 +358,20 @@ mod tests {
             !r.excerpt.contains("incididunt"),
             "excerpt: {:?}",
             r.excerpt
+        );
+    }
+
+    #[test]
+    fn excerpt_ignores_markdown_images() {
+        let md =
+            "20260602，在经历几天暴涨后，当天盘前DELL最高涨近四个点，但是开盘微涨，后大幅度收跌\n\
+                  ![image](/uploads/2026/06/7a1a67fc-image.png)\n\
+                  ![image](/uploads/2026/06/0f2cca72-image.png)\n\n\
+                  ![image](/uploads/2026/06/0ac93087-image.png)";
+        let r = render_markdown(md).unwrap();
+        assert_eq!(
+            r.excerpt,
+            "20260602，在经历几天暴涨后，当天盘前DELL最高涨近四个点，但是开盘微涨，后大幅度收跌"
         );
     }
 

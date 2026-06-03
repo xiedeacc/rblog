@@ -787,10 +787,12 @@ fn parse_dt(value: Option<String>) -> Option<DateTime<Utc>> {
 }
 
 fn excerpt_from_content(markdown: &str, html: &str) -> String {
+    let cleaned_markdown;
     let source = if markdown.trim().is_empty() {
         html
     } else {
-        markdown
+        cleaned_markdown = strip_markdown_images(markdown);
+        &cleaned_markdown
     };
     let mut text = String::with_capacity(source.len().min(512));
     let mut in_tag = false;
@@ -814,6 +816,32 @@ fn excerpt_from_content(markdown: &str, html: &str) -> String {
     }
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     normalized.chars().take(180).collect()
+}
+
+fn strip_markdown_images(markdown: &str) -> String {
+    let mut cleaned = String::with_capacity(markdown.len());
+    let mut rest = markdown;
+    while let Some(start) = rest.find("![") {
+        cleaned.push_str(&rest[..start]);
+        let candidate = &rest[start + 2..];
+        let Some(alt_end) = candidate.find(']') else {
+            cleaned.push_str(&rest[start..]);
+            return cleaned;
+        };
+        let after_alt = &candidate[alt_end + 1..];
+        if !after_alt.starts_with('(') {
+            cleaned.push_str(&rest[start..start + 2 + alt_end + 1]);
+            rest = after_alt;
+            continue;
+        }
+        let Some(url_end) = after_alt[1..].find(')') else {
+            cleaned.push_str(&rest[start..]);
+            return cleaned;
+        };
+        rest = &after_alt[url_end + 2..];
+    }
+    cleaned.push_str(rest);
+    cleaned
 }
 
 fn non_empty_owned(value: String) -> Option<String> {
