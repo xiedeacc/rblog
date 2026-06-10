@@ -8,10 +8,21 @@ import {
   enableUser,
   setUserPassword,
   removeUser,
+  fetchSystemSettings,
   type UserItem,
 } from "@/api/client";
 
 const { Title } = Typography;
+
+function registrationEnabled(raw: string | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.allowRegistration === true;
+  } catch {
+    return false;
+  }
+}
 
 export function UsersPage() {
   const { message } = App.useApp();
@@ -21,6 +32,8 @@ export function UsersPage() {
   const [form] = Form.useForm();
   const [pwdForm] = Form.useForm();
   const query = useQuery({ queryKey: ["users"], queryFn: listUsers });
+  const settings = useQuery({ queryKey: ["settings-system"], queryFn: fetchSystemSettings });
+  const canCreateUser = registrationEnabled(settings.data?.data.user);
 
   const onCreate = useMutation({
     mutationFn: createUser,
@@ -63,7 +76,11 @@ export function UsersPage() {
           <Title level={3} style={{ margin: 0 }}>
             Users
           </Title>
-          <Button type="primary" onClick={() => setOpenCreate(true)}>
+          <Button
+            type="primary"
+            disabled={!canCreateUser}
+            onClick={() => setOpenCreate(true)}
+          >
             New user
           </Button>
         </div>

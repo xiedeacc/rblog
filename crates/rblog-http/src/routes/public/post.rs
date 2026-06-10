@@ -4,6 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum_extra::extract::cookie::CookieJar;
+use rblog_content::content::Visible;
 use rblog_core::ServiceError;
 use serde_json::{json, Value};
 
@@ -21,6 +22,13 @@ pub async fn detail(
         Err(ServiceError::NotFound { .. }) => return Ok(render_404(&state)),
         Err(e) => return Err(e.into()),
     };
+    let user_name = user
+        .as_ref()
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str);
+    if detail.visible == Visible::Private && detail.owner.as_deref() != user_name {
+        return Ok(render_404(&state));
+    }
     detail.visits = state.services.posts.increment_visit(&detail.name).await?;
     let mut ctx = base_context(&state);
     let post = json!({

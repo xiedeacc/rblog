@@ -17,6 +17,7 @@ use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum_extra::extract::cookie::CookieJar;
 use rblog_content::content::{Comment, CommentOwner, Reply};
 use rblog_core::NewComment;
 use serde::{Deserialize, Serialize};
@@ -129,8 +130,10 @@ pub async fn list(
 #[derive(Debug, Deserialize)]
 pub struct SubmitRequest {
     pub raw: String,
-    pub display_name: String,
-    pub email: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
     #[serde(default)]
     pub subject_kind: Option<String>,
     #[serde(default)]
@@ -155,6 +158,7 @@ pub struct SubmitResponse {
 /// Submit a comment. Returns 201 on success.
 pub async fn submit(
     State(state): State<AppState>,
+    jar: CookieJar,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(body): Json<SubmitRequest>,
@@ -181,26 +185,12 @@ pub async fn submit(
         return Err(HttpError::rate_limited_retry_after(retry_after.as_secs()));
     }
 
-    // 3) Validate basic fields up front.
-    if body.display_name.trim().is_empty() {
-        return Err(HttpError::validation("display_name must not be empty"));
-    }
-    if !body.email.contains('@') {
-        return Err(HttpError::validation("email looks invalid"));
-    }
-
     let kind = body
         .subject_kind
         .clone()
         .unwrap_or_else(|| "Post".to_owned());
     let subject_name = resolve_subject_for_submit(&state, &kind, &body).await?;
-
-    let owner = CommentOwner {
-        kind: "Email".to_owned(),
-        name: body.email.clone(),
-        display_name: Some(body.display_name.clone()),
-        annotations: None,
-    };
+    let owner = comment_owner(&state, &jar).await;
     let saved = state
         .services
         .comments
@@ -230,6 +220,7 @@ pub async fn submit(
 
 pub async fn submit_reply(
     State(state): State<AppState>,
+    jar: CookieJar,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(comment_name): Path<String>,
@@ -254,18 +245,7 @@ pub async fn submit_reply(
     if let RateVerdict::Reject { retry_after } = state.comment_rate_limit.check(client_ip) {
         return Err(HttpError::rate_limited_retry_after(retry_after.as_secs()));
     }
-    if body.display_name.trim().is_empty() {
-        return Err(HttpError::validation("display_name must not be empty"));
-    }
-    if !body.email.contains('@') {
-        return Err(HttpError::validation("email looks invalid"));
-    }
-    let owner = CommentOwner {
-        kind: "Email".to_owned(),
-        name: body.email.clone(),
-        display_name: Some(body.display_name.clone()),
-        annotations: None,
-    };
+    let owner = comment_owner(&state, &jar).await;
     let saved = state
         .services
         .comments
@@ -306,6 +286,28 @@ fn real_ip(headers: &HeaderMap, addr: SocketAddr) -> std::net::IpAddr {
         return forwarded;
     }
     addr.ip()
+}
+
+async fn comment_owner(state: &AppState, jar: &CookieJar) -> CommentOwner {
+    if let Some(cookie) = jar.get(&state.config.session.cookie_name) {
+        if let Some(session) = state.sessions.lookup(cookie.value()) {
+            if let Ok(user) = state.services.users.get(&session.user).await {
+                let spec = user.spec.unwrap_or_default();
+                return CommentOwner {
+                    kind: "User".to_owned(),
+                    name: user.metadata.name,
+                    display_name: Some(spec.display_name),
+                    annotations: None,
+                };
+            }
+        }
+    }
+    CommentOwner {
+        kind: "Guest".to_owned(),
+        name: "guest".to_owned(),
+        display_name: Some("游客".to_owned()),
+        annotations: None,
+    }
 }
 
 async fn resolve_subject(state: &AppState, kind: &str, q: &ListQuery) -> Result<String, HttpError> {

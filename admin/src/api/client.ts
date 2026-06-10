@@ -30,6 +30,7 @@ export interface PostSummary {
   publish_time: string | null;
   published: boolean;
   visible: string;
+  owner: string | null;
   deleted: boolean;
   deletion_time: string | null;
   creation_time: string | null;

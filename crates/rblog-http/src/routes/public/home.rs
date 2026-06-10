@@ -3,6 +3,7 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
 use axum_extra::extract::cookie::CookieJar;
+use rblog_content::content::Visible;
 use rblog_core::{PostListQuery, PostStatusFilter};
 use serde_json::json;
 
@@ -54,11 +55,17 @@ async fn render_index(
             ..PostListQuery::default()
         })
         .await?;
+    let user_name = user
+        .as_ref()
+        .and_then(|value| value.get("name"))
+        .and_then(serde_json::Value::as_str);
+    let items = filter_posts_for_user(list.items, user_name);
+    let all_items = filter_posts_for_user(all_public.items, user_name);
     let mut ctx = base_context(state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
-    ctx["posts"] = serde_json::to_value(&list.items).unwrap_or(json!([]));
-    ctx["pagination"] = pagination("/", page, PAGE_SIZE, list.total);
-    ctx["home"] = homepage_context(state, &all_public.items).await?;
+    ctx["posts"] = serde_json::to_value(&items).unwrap_or(json!([]));
+    ctx["pagination"] = pagination("/", page, PAGE_SIZE, items.len());
+    ctx["home"] = homepage_context(state, &all_items).await?;
     let renderer = active_renderer(state)?;
     Ok(super::no_store_html(renderer.render("index.html", &ctx)?))
 }
@@ -78,11 +85,26 @@ pub async fn archive(state: State<AppState>, jar: CookieJar) -> Result<Response,
             ..PostListQuery::default()
         })
         .await?;
+    let user_name = user
+        .as_ref()
+        .and_then(|value| value.get("name"))
+        .and_then(serde_json::Value::as_str);
+    let items = filter_posts_for_user(list.items, user_name);
     let mut ctx = base_context(&state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
-    ctx["posts"] = serde_json::to_value(&list.items).unwrap_or(json!([]));
+    ctx["posts"] = serde_json::to_value(&items).unwrap_or(json!([]));
     let renderer = active_renderer(&state)?;
     Ok(super::no_store_html(renderer.render("archive.html", &ctx)?))
+}
+
+fn filter_posts_for_user(
+    posts: Vec<rblog_core::PostListItem>,
+    user_name: Option<&str>,
+) -> Vec<rblog_core::PostListItem> {
+    posts
+        .into_iter()
+        .filter(|post| post.visible != Visible::Private || post.owner.as_deref() == user_name)
+        .collect()
 }
 
 async fn homepage_context(

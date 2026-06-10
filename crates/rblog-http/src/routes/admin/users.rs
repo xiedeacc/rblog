@@ -6,12 +6,12 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use rblog_content::core::User;
 use rblog_core::CreateUser;
-use rblog_index::{IndexEngine, ListOptions};
-use rblog_scheme::Extension;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{AppState, HttpError};
+
+const USER_SETTINGS_KEY: &str = "user";
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -50,19 +50,8 @@ fn item_from(user: &User) -> UserItem {
     responses((status = 200, body = Vec<UserItem>)),
 )]
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<UserItem>>, HttpError> {
-    Ok(Json(list_users(&state.services.index)?))
-}
-
-fn list_users(index: &IndexEngine) -> Result<Vec<UserItem>, HttpError> {
-    let res = index.list(&User::gvk(), &ListOptions::default())?;
-    res.items
-        .into_iter()
-        .map(|entry| {
-            let user: User = serde_json::from_value(entry.raw)
-                .map_err(|e| HttpError::Internal(anyhow::anyhow!("decode User: {e}")))?;
-            Ok(item_from(&user))
-        })
-        .collect()
+    let users = state.services.users.list().await?;
+    Ok(Json(users.iter().map(item_from).collect()))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -88,6 +77,10 @@ pub async fn create(
     State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserItem>), HttpError> {
+    if !registration_enabled(&state).await? {
+        return Err(HttpError::forbidden("new user registration is disabled"));
+    }
+
     let saved = state
         .services
         .users
@@ -99,6 +92,18 @@ pub async fn create(
         })
         .await?;
     Ok((StatusCode::CREATED, Json(item_from(&saved))))
+}
+
+async fn registration_enabled(state: &AppState) -> Result<bool, HttpError> {
+    let enabled = state
+        .services
+        .configmaps
+        .system_value(USER_SETTINGS_KEY)
+        .await?
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|value| value.get("allowRegistration").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+    Ok(enabled)
 }
 
 /// Get a single user by name.

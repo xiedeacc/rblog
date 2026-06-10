@@ -2,12 +2,11 @@
 
 use axum::routing::get;
 use axum::{Json, Router};
+use rblog_core::{PostListQuery, PostStatusFilter};
 use serde::Serialize;
 use serde_json::json;
 
 use crate::AppState;
-
-use rblog_scheme::Extension as _;
 
 #[derive(Serialize)]
 struct ReadinessBody {
@@ -32,12 +31,22 @@ async fn readiness(
 ) -> Json<ReadinessBody> {
     let posts = state
         .services
-        .index
-        .entry_count(&rblog_content::content::Post::gvk());
+        .posts
+        .list(PostListQuery {
+            status: PostStatusFilter::Any,
+            include_deleted: true,
+            offset: 0,
+            limit: 1,
+            ..PostListQuery::default()
+        })
+        .await
+        .map_or(0, |page| page.total);
     let users = state
         .services
-        .index
-        .entry_count(&rblog_content::core::User::gvk());
+        .users
+        .list()
+        .await
+        .map_or(0, |items| items.len());
     Json(ReadinessBody {
         state: "ready",
         backend: state.pool.backend(),

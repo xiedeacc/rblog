@@ -74,6 +74,7 @@ pub struct PostSummary {
     pub published: bool,
     #[schema(value_type = String, example = "PUBLIC")]
     pub visible: Visible,
+    pub owner: Option<String>,
     pub deleted: bool,
     pub deletion_time: Option<chrono::DateTime<chrono::Utc>>,
     pub creation_time: Option<chrono::DateTime<chrono::Utc>>,
@@ -95,6 +96,7 @@ impl From<PostListItem> for PostSummary {
             publish_time: p.publish_time,
             published: p.published,
             visible: p.visible,
+            owner: p.owner,
             deleted: p.deleted,
             deletion_time: p.deletion_time,
             creation_time: p.creation_time,
@@ -118,6 +120,7 @@ impl From<PostListItem> for PostSummary {
 )]
 pub async fn list(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Query(q): Query<ListQuery>,
 ) -> Result<Json<ListPage>, HttpError> {
     state.services.posts.purge_expired_deleted().await?;
@@ -168,6 +171,7 @@ pub async fn list(
         let filtered = page
             .items
             .into_iter()
+            .filter(|post| can_access_post(post.visible, post.owner.as_deref(), &user.name))
             .filter(|post| post.visible == visible || post.pinned)
             .collect::<Vec<_>>();
         let total = filtered.len();
@@ -183,9 +187,15 @@ pub async fn list(
     }
 
     let page = state.services.posts.list(query).await?;
+    let items = page
+        .items
+        .into_iter()
+        .filter(|post| can_access_post(post.visible, post.owner.as_deref(), &user.name))
+        .collect::<Vec<_>>();
+    let total = items.len();
     Ok(Json(ListPage {
-        items: page.items.into_iter().map(PostSummary::from).collect(),
-        total: page.total,
+        items: items.into_iter().map(PostSummary::from).collect(),
+        total,
     }))
 }
 
@@ -267,9 +277,11 @@ pub async fn create(
 )]
 pub async fn detail(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<Json<PostDetail>, HttpError> {
     let detail = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&detail, &user)?;
     Ok(Json(detail))
 }
 
@@ -316,6 +328,7 @@ pub async fn update_content(
     Json(body): Json<UpdateContent>,
 ) -> Result<Json<PostDetail>, HttpError> {
     let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     let content_changed = previous.raw_markdown != body.markdown;
     state
         .services
@@ -366,9 +379,12 @@ pub struct PublishBody {
 )]
 pub async fn publish(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
     Json(body): Json<PublishBody>,
 ) -> Result<Json<PostDetail>, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     let opts = rblog_core::PublishOptions {
         publish_time: body.publish_time,
         visible: body.visible,
@@ -388,8 +404,11 @@ pub async fn publish(
 )]
 pub async fn unpublish(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<Json<PostDetail>, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     let detail = state.services.posts.unpublish(&name).await?;
     search_sync::index_if_published(&state.search, &detail);
     Ok(Json(detail))
@@ -397,8 +416,11 @@ pub async fn unpublish(
 
 pub async fn pin(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<Json<PostDetail>, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     let detail = state
         .services
         .posts
@@ -416,8 +438,11 @@ pub async fn pin(
 
 pub async fn unpin(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<Json<PostDetail>, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     let detail = state
         .services
         .posts
@@ -443,8 +468,11 @@ pub async fn unpin(
 )]
 pub async fn soft_delete(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<StatusCode, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     state.services.posts.soft_delete(&name).await?;
     search_sync::delete(&state.search, &name);
     Ok(StatusCode::NO_CONTENT)
@@ -460,8 +488,11 @@ pub async fn soft_delete(
 )]
 pub async fn restore(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<Json<PostDetail>, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     let detail = state.services.posts.restore(&name).await?;
     search_sync::index_if_published(&state.search, &detail);
     Ok(Json(detail))
@@ -477,9 +508,27 @@ pub async fn restore(
 )]
 pub async fn purge(
     State(state): State<AppState>,
+    Extension(user): Extension<AuthedUser>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, HttpError> {
+    let previous = state.services.posts.admin_detail(&name).await?;
+    ensure_can_access(&previous, &user)?;
     state.services.posts.purge(&name).await?;
     search_sync::delete(&state.search, &name);
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn can_access_post(visible: Visible, owner: Option<&str>, user: &str) -> bool {
+    visible != Visible::Private || owner == Some(user)
+}
+
+fn ensure_can_access(detail: &PostDetail, user: &AuthedUser) -> Result<(), HttpError> {
+    if can_access_post(detail.visible, detail.owner.as_deref(), &user.name) {
+        Ok(())
+    } else {
+        Err(HttpError::not_found(format!(
+            "Post `{}` not found",
+            detail.name
+        )))
+    }
 }

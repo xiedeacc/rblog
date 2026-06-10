@@ -65,6 +65,16 @@ impl UserService {
         user_from_row(row)
     }
 
+    pub async fn list(&self) -> Result<Vec<User>, ServiceError> {
+        sqlx::query("SELECT * FROM users ORDER BY registered_at ASC, name ASC")
+            .fetch_all(sqlite(&self.pool)?)
+            .await
+            .map_err(map_sqlx)?
+            .into_iter()
+            .map(user_from_row)
+            .collect()
+    }
+
     pub async fn delete(&self, name: &str) -> Result<(), ServiceError> {
         let res = sqlx::query("DELETE FROM users WHERE name = ?")
             .bind(name)

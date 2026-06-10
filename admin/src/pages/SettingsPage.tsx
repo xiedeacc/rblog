@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Form, Input, Space, Typography, App, Tabs } from "antd";
+import { Alert, Button, Card, Form, Input, Space, Typography, App, Tabs, Switch } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchSystemSettings,
@@ -14,6 +14,7 @@ const { Title, Paragraph } = Typography;
 interface SiteFormValues {
   title: string;
   subtitle?: string;
+  registration_enabled?: boolean;
 }
 
 function parseJsonSetting(value: string | undefined): Record<string, unknown> {
@@ -24,6 +25,11 @@ function parseJsonSetting(value: string | undefined): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function allowRegistration(value: string | undefined): boolean {
+  const user = parseJsonSetting(value);
+  return user.allowRegistration === true;
 }
 
 export function SettingsPage() {
@@ -50,6 +56,7 @@ export function SettingsPage() {
         subtitle:
           settings.data.data["site.subtitle"] ||
           (typeof basic.subtitle === "string" ? basic.subtitle : undefined),
+        registration_enabled: allowRegistration(settings.data.data.user),
       });
     }
   }, [settings.data, form, siteForm]);
@@ -84,9 +91,14 @@ export function SettingsPage() {
         title: values.title,
         ...(values.subtitle ? { subtitle: values.subtitle } : {}),
       };
+      const user = {
+        ...parseJsonSetting(systemData.user),
+        allowRegistration: values.registration_enabled === true,
+      };
       const next = {
         ...systemData,
         basic: JSON.stringify(basic),
+        user: JSON.stringify(user),
         "site.title": values.title,
         ...(values.subtitle ? { "site.subtitle": values.subtitle } : {}),
       };
@@ -124,6 +136,13 @@ export function SettingsPage() {
                     </Form.Item>
                     <Form.Item name="subtitle" label="Site subtitle">
                       <Input />
+                    </Form.Item>
+                    <Form.Item
+                      name="registration_enabled"
+                      label="Allow new user registration"
+                      valuePropName="checked"
+                    >
+                      <Switch />
                     </Form.Item>
                     <Form.Item>
                       <Button type="primary" htmlType="submit" loading={saveSite.isPending}>

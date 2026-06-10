@@ -348,6 +348,150 @@ async fn visible_filter_keeps_pinned_private_posts() {
 }
 
 #[tokio::test]
+async fn user_registration_follows_admin_setting() {
+    let h = boot().await;
+    bootstrap(&h).await;
+    assert_eq!(login(&h, "admin", "supersecret").await, 200);
+
+    let disabled = h
+        .client
+        .post(h.url("/api/admin/users"))
+        .json(&json!({
+            "name": "alice",
+            "display_name": "Alice",
+            "email": "alice@example.com",
+            "password": "supersecret"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(disabled.status(), 403);
+
+    let put = h
+        .client
+        .put(h.url("/api/admin/system/settings"))
+        .json(&json!({"data": {"user": r#"{"allowRegistration":true}"#}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    let enabled = h
+        .client
+        .post(h.url("/api/admin/users"))
+        .json(&json!({
+            "name": "alice",
+            "display_name": "Alice",
+            "email": "alice@example.com",
+            "password": "supersecret"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(enabled.status(), 201, "{}", enabled.text().await.unwrap());
+}
+
+#[tokio::test]
+async fn private_posts_are_only_visible_to_the_owner() {
+    let h = boot().await;
+    bootstrap(&h).await;
+    assert_eq!(login(&h, "admin", "supersecret").await, 200);
+
+    let put = h
+        .client
+        .put(h.url("/api/admin/system/settings"))
+        .json(&json!({"data": {"user": r#"{"allowRegistration":true}"#}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    let create_user = h
+        .client
+        .post(h.url("/api/admin/users"))
+        .json(&json!({
+            "name": "bob",
+            "display_name": "Bob",
+            "email": "bob@example.com",
+            "password": "supersecret"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        create_user.status(),
+        201,
+        "{}",
+        create_user.text().await.unwrap()
+    );
+
+    let create_post = h
+        .client
+        .post(h.url("/api/admin/posts"))
+        .json(&json!({
+            "name": "admin-private",
+            "title": "Admin private",
+            "slug": "admin-private",
+            "markdown": "# Admin private",
+            "visible": "PRIVATE"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        create_post.status(),
+        201,
+        "{}",
+        create_post.text().await.unwrap()
+    );
+    let publish = h
+        .client
+        .post(h.url("/api/admin/posts/admin-private/publish"))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(publish.status(), 200);
+
+    let bob = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("client");
+    let login = bob
+        .post(h.url("/api/admin/auth/login"))
+        .json(&json!({"username": "bob", "password": "supersecret"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), 200);
+
+    let admin_detail = bob
+        .get(h.url("/api/admin/posts/admin-private"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(admin_detail.status(), 404);
+
+    let edit = bob
+        .put(h.url("/api/admin/posts/admin-private"))
+        .json(&json!({
+            "markdown": "# Stolen",
+            "title": "Stolen"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(edit.status(), 404);
+
+    let public_detail = bob
+        .get(h.url("/archives/admin-private"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(public_detail.status(), 404);
+}
+
+#[tokio::test]
 async fn tag_and_category_crud() {
     let h = boot().await;
     bootstrap(&h).await;
