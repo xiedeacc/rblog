@@ -33,18 +33,7 @@ async fn render_index(
     let user = current_user(state, jar).await;
     let public_only = user.is_none();
     let offset = (page - 1) * PAGE_SIZE;
-    let list = state
-        .services
-        .posts
-        .list(PostListQuery {
-            status: PostStatusFilter::Published,
-            offset,
-            limit: PAGE_SIZE,
-            public_only,
-            ..PostListQuery::default()
-        })
-        .await?;
-    let all_public = state
+    let all_posts = state
         .services
         .posts
         .list(PostListQuery {
@@ -59,12 +48,18 @@ async fn render_index(
         .as_ref()
         .and_then(|value| value.get("name"))
         .and_then(serde_json::Value::as_str);
-    let items = filter_posts_for_user(list.items, user_name);
-    let all_items = filter_posts_for_user(all_public.items, user_name);
+    let all_items = filter_posts_for_user(all_posts.items, user_name);
+    let total = all_items.len();
+    let items = all_items
+        .iter()
+        .skip(offset)
+        .take(PAGE_SIZE)
+        .cloned()
+        .collect::<Vec<_>>();
     let mut ctx = base_context(state);
     ctx["current_user"] = user.unwrap_or(serde_json::Value::Null);
     ctx["posts"] = serde_json::to_value(&items).unwrap_or(json!([]));
-    ctx["pagination"] = pagination("/", page, PAGE_SIZE, items.len());
+    ctx["pagination"] = pagination("/", page, PAGE_SIZE, total);
     ctx["home"] = homepage_context(state, &all_items).await?;
     let renderer = active_renderer(state)?;
     Ok(super::no_store_html(renderer.render("index.html", &ctx)?))
