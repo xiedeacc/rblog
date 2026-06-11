@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BACKUP_REPO_URL="${RBLOG_BACKUP_REPO_URL:-git@github.com:xiedeacc/blog_data.git}"
+BACKUP_BRANCH="${RBLOG_BACKUP_BRANCH:-master}"
 MAX_FILE_BYTES="${RBLOG_BACKUP_MAX_FILE_BYTES:-52428800}"
 SPLIT_BYTES="${RBLOG_BACKUP_SPLIT_BYTES:-49000000}"
 
@@ -22,11 +23,13 @@ require_command() {
   fi
 }
 
-checkout_main_branch() {
-  if git -C "$work_dir" show-ref --verify --quiet refs/remotes/origin/main; then
-    git -C "$work_dir" checkout -B main origin/main >/dev/null
+checkout_backup_branch() {
+  if git -C "$work_dir" show-ref --verify --quiet "refs/remotes/origin/${BACKUP_BRANCH}"; then
+    git -C "$work_dir" checkout -B "$BACKUP_BRANCH" "origin/${BACKUP_BRANCH}" >/dev/null
+  elif git -C "$work_dir" rev-parse --verify HEAD >/dev/null 2>&1; then
+    git -C "$work_dir" checkout -B "$BACKUP_BRANCH" >/dev/null
   else
-    git -C "$work_dir" checkout -B main >/dev/null
+    git -C "$work_dir" checkout --orphan "$BACKUP_BRANCH" >/dev/null
   fi
 }
 
@@ -53,21 +56,21 @@ PY
 ensure_repo() {
   if [[ -d "$work_dir/.git" ]]; then
     git -C "$work_dir" remote set-url origin "$BACKUP_REPO_URL"
-    git -C "$work_dir" fetch origin main >/dev/null 2>&1 || true
-    checkout_main_branch
-    git -C "$work_dir" pull --ff-only origin main >/dev/null 2>&1 || true
+    git -C "$work_dir" fetch origin "$BACKUP_BRANCH" >/dev/null 2>&1 || true
+    checkout_backup_branch
+    git -C "$work_dir" pull --ff-only origin "$BACKUP_BRANCH" >/dev/null 2>&1 || true
     return
   fi
 
   rm -rf "$work_dir"
   if git clone "$BACKUP_REPO_URL" "$work_dir"; then
-    checkout_main_branch
+    checkout_backup_branch
     return
   fi
 
   log "clone failed; initializing a new repository at $work_dir"
   mkdir -p "$work_dir"
-  git -C "$work_dir" init -b main
+  git -C "$work_dir" init -b "$BACKUP_BRANCH"
   git -C "$work_dir" remote add origin "$BACKUP_REPO_URL"
 }
 
@@ -131,7 +134,7 @@ commit_and_push_if_changed() {
   if git -C "$work_dir" diff --cached --quiet; then
     log "no changes detected"
     if git -C "$work_dir" rev-parse --verify HEAD >/dev/null 2>&1; then
-      git -C "$work_dir" push origin main
+      git -C "$work_dir" push origin "$BACKUP_BRANCH"
     fi
     return
   fi
@@ -144,7 +147,7 @@ commit_and_push_if_changed() {
   fi
 
   git -C "$work_dir" commit -m "Backup $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-  git -C "$work_dir" push origin main
+  git -C "$work_dir" push origin "$BACKUP_BRANCH"
 }
 
 main() {
