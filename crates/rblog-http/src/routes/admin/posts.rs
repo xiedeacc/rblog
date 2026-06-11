@@ -519,7 +519,8 @@ pub async fn purge(
 }
 
 fn can_access_post(visible: Visible, owner: Option<&str>, user: &str) -> bool {
-    visible != Visible::Private || owner == Some(user)
+    let _ = visible;
+    owner == Some(user)
 }
 
 fn ensure_can_access(detail: &PostDetail, user: &AuthedUser) -> Result<(), HttpError> {

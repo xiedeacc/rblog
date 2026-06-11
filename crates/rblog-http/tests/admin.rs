@@ -392,7 +392,7 @@ async fn user_registration_follows_admin_setting() {
 }
 
 #[tokio::test]
-async fn private_posts_are_only_visible_to_the_owner() {
+async fn admin_posts_are_only_visible_to_the_owner() {
     let h = boot().await;
     bootstrap(&h).await;
     assert_eq!(login(&h, "admin", "supersecret").await, 200);
@@ -425,33 +425,38 @@ async fn private_posts_are_only_visible_to_the_owner() {
         create_user.text().await.unwrap()
     );
 
-    let create_post = h
-        .client
-        .post(h.url("/api/admin/posts"))
-        .json(&json!({
-            "name": "admin-private",
-            "title": "Admin private",
-            "slug": "admin-private",
-            "markdown": "# Admin private",
-            "visible": "PRIVATE"
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        create_post.status(),
-        201,
-        "{}",
-        create_post.text().await.unwrap()
-    );
-    let publish = h
-        .client
-        .post(h.url("/api/admin/posts/admin-private/publish"))
-        .json(&json!({}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(publish.status(), 200);
+    for (name, title, visible) in [
+        ("admin-public", "Admin public", "PUBLIC"),
+        ("admin-private", "Admin private", "PRIVATE"),
+    ] {
+        let create_post = h
+            .client
+            .post(h.url("/api/admin/posts"))
+            .json(&json!({
+                "name": name,
+                "title": title,
+                "slug": name,
+                "markdown": format!("# {title}"),
+                "visible": visible
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            create_post.status(),
+            201,
+            "{}",
+            create_post.text().await.unwrap()
+        );
+        let publish = h
+            .client
+            .post(h.url(&format!("/api/admin/posts/{name}/publish")))
+            .json(&json!({}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(publish.status(), 200);
+    }
 
     let bob = reqwest::Client::builder()
         .cookie_store(true)
@@ -465,30 +470,42 @@ async fn private_posts_are_only_visible_to_the_owner() {
         .unwrap();
     assert_eq!(login.status(), 200);
 
-    let admin_detail = bob
-        .get(h.url("/api/admin/posts/admin-private"))
+    let list = bob
+        .get(h.url("/api/admin/posts?status=any&visible=PUBLIC"))
         .send()
         .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
         .unwrap();
-    assert_eq!(admin_detail.status(), 404);
+    assert!(list["items"].as_array().unwrap().is_empty());
 
-    let edit = bob
-        .put(h.url("/api/admin/posts/admin-private"))
-        .json(&json!({
-            "markdown": "# Stolen",
-            "title": "Stolen"
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(edit.status(), 404);
+    for name in ["admin-public", "admin-private"] {
+        let admin_detail = bob
+            .get(h.url(&format!("/api/admin/posts/{name}")))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(admin_detail.status(), 404);
+
+        let edit = bob
+            .put(h.url(&format!("/api/admin/posts/{name}")))
+            .json(&json!({
+                "markdown": "# Stolen",
+                "title": "Stolen"
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(edit.status(), 404);
+    }
 
     let public_detail = bob
-        .get(h.url("/archives/admin-private"))
+        .get(h.url("/archives/admin-public"))
         .send()
         .await
         .unwrap();
-    assert_eq!(public_detail.status(), 404);
+    assert_eq!(public_detail.status(), 200);
 }
 
 #[tokio::test]
