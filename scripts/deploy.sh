@@ -36,6 +36,29 @@ run_remote() {
   ssh "$host" "$@"
 }
 
+copy_dir_local() {
+  local src="$1"
+  local dst="$2"
+  local delete="${3:-0}"
+  sudo mkdir -p "$dst"
+  if [[ "$delete" == "1" ]]; then
+    sudo find "$dst" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  fi
+  sudo cp -a "$src/." "$dst/"
+}
+
+copy_dir_remote() {
+  local host="$1"
+  local src="$2"
+  local dst="$3"
+  local delete="${4:-0}"
+  run_remote "$host" "sudo mkdir -p '$dst'"
+  if [[ "$delete" == "1" ]]; then
+    run_remote "$host" "sudo find '$dst' -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +"
+  fi
+  tar -C "$src" -cf - . | ssh "$host" "sudo tar -C '$dst' -xf -"
+}
+
 sudo_write_remote() {
   local host="$1"
   local dst="$2"
@@ -196,9 +219,9 @@ deploy_local() {
     "$DEST_DIR/data/uploads" \
     "$DEST_DIR/data/search-index" \
     "$DEST_DIR/data/plugins"
-  sudo rsync -a --delete "$BUILD_DIR/bin/" "$DEST_DIR/bin/"
-  sudo rsync -a "$BUILD_DIR/conf/" "$DEST_DIR/conf/"
-  sudo rsync -a --delete "$BUILD_DIR/data/themes/" "$DEST_DIR/data/themes/"
+  copy_dir_local "$BUILD_DIR/bin" "$DEST_DIR/bin" 1
+  copy_dir_local "$BUILD_DIR/conf" "$DEST_DIR/conf" 0
+  copy_dir_local "$BUILD_DIR/data/themes" "$DEST_DIR/data/themes" 1
   sudo cp "$service_file" "/etc/systemd/system/${SERVICE_NAME}.service"
   sudo cp "$backup_service_file" "/etc/systemd/system/${SERVICE_NAME}-backup.service"
   sudo cp "$backup_timer_file" "/etc/systemd/system/${SERVICE_NAME}-backup.timer"
@@ -226,9 +249,9 @@ deploy_remote() {
 
   log "deploying to ${host}:${DEST_DIR} (${remote_arch})"
   run_remote "$host" "sudo mkdir -p '$DEST_DIR/bin' '$DEST_DIR/conf' '$DEST_DIR/logs' '$DEST_DIR/data/themes' '$DEST_DIR/data/uploads' '$DEST_DIR/data/search-index' '$DEST_DIR/data/plugins' && sudo chown -R '$remote_user:$remote_user' '$DEST_DIR'"
-  rsync -az --delete "$BUILD_DIR/bin/" "$host:$DEST_DIR/bin/"
-  rsync -az "$BUILD_DIR/conf/" "$host:$DEST_DIR/conf/"
-  rsync -az --delete "$BUILD_DIR/data/themes/" "$host:$DEST_DIR/data/themes/"
+  copy_dir_remote "$host" "$BUILD_DIR/bin" "$DEST_DIR/bin" 1
+  copy_dir_remote "$host" "$BUILD_DIR/conf" "$DEST_DIR/conf" 0
+  copy_dir_remote "$host" "$BUILD_DIR/data/themes" "$DEST_DIR/data/themes" 1
   sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}.service" <"$service_file"
   sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}-backup.service" <"$backup_service_file"
   sudo_write_remote "$host" "/etc/systemd/system/${SERVICE_NAME}-backup.timer" <"$backup_timer_file"

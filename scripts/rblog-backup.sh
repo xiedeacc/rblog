@@ -75,14 +75,44 @@ ensure_repo() {
 }
 
 sync_source() {
-  rsync -a --delete \
-    --exclude '/logs/' \
-    --exclude '/logs/**' \
-    --exclude "/${work_dir_name}/" \
-    --exclude "/${work_dir_name}/**" \
-    --exclude '/.git/' \
-    --exclude '/.git/**' \
-    "$install_dir/" "$work_dir/"
+  clear_worktree
+  copy_tree "$install_dir" "$work_dir" should_exclude_backup_path
+}
+
+clear_worktree() {
+  find "$work_dir" -mindepth 1 -maxdepth 1 \
+    ! -name '.git' -exec rm -rf -- {} +
+}
+
+should_exclude_backup_path() {
+  case "$1" in
+    logs|logs/*|"$work_dir_name"|"$work_dir_name"/*|.git|.git/*) return 0 ;;
+  esac
+  return 1
+}
+
+copy_tree() {
+  local src="$1"
+  local dst="$2"
+  local exclude_func="$3"
+  local rel
+
+  mkdir -p "$dst"
+  (
+    cd "$src"
+    while IFS= read -r -d '' rel; do
+      rel="${rel#./}"
+      if "$exclude_func" "$rel"; then
+        continue
+      fi
+      if [[ -d "$src/$rel" && ! -L "$src/$rel" ]]; then
+        mkdir -p "$dst/$rel"
+      else
+        mkdir -p "$dst/$(dirname "$rel")"
+        cp -a "$src/$rel" "$dst/$rel"
+      fi
+    done < <(find . -mindepth 1 -print0)
+  )
 }
 
 reset_generated_split_files() {
@@ -152,7 +182,6 @@ commit_and_push_if_changed() {
 
 main() {
   require_command git
-  require_command rsync
   require_command python3
   require_command stat
   require_command find

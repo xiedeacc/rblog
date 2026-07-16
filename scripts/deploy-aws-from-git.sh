@@ -133,9 +133,10 @@ copy_dir_if_present() {
   local src="$1"
   local dst="$2"
   [[ -d "$src" ]] || return 1
-  log "sync $src/ -> $dst/"
+  log "copy $src/ -> $dst/"
   run mkdir -p "$dst"
-  run rsync -a --delete "$src/" "$dst/"
+  run find "$dst" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  run_shell "tar -C $(printf '%q' "$src") -cf - . | tar -C $(printf '%q' "$dst") -xf -"
 }
 
 is_root_layout() {
@@ -154,10 +155,7 @@ prepare_staging_from_worktree() {
   local src="$1"
   local staging="$2"
   run mkdir -p "$staging"
-  run rsync -a \
-    --exclude '/.git/' \
-    --exclude '/.git/**' \
-    "$src/" "$staging/"
+  run_shell "tar -C $(printf '%q' "$src") --exclude='./.git' --exclude='./.git/*' -cf - . | tar -C $(printf '%q' "$staging") -xf -"
   reconstruct_split_files "$staging"
 }
 
@@ -188,14 +186,10 @@ restore_blog_dir() {
 
   log "restore rblog files from $src to $BLOG_DIR"
   run mkdir -p "$BLOG_DIR"
-  run rsync -a --delete \
-    --exclude '/logs/' \
-    --exclude '/logs/**' \
-    --exclude '/.backup-worktree/' \
-    --exclude '/.backup-worktree/**' \
-    --exclude '/.git/' \
-    --exclude '/.git/**' \
-    "$staging/" "$BLOG_DIR/"
+  run find "$BLOG_DIR" -mindepth 1 -maxdepth 1 \
+    ! -name logs ! -name .backup-worktree ! -name .git \
+    -exec rm -rf -- {} +
+  run_shell "tar -C $(printf '%q' "$staging") --exclude='./logs' --exclude='./logs/*' --exclude='./.backup-worktree' --exclude='./.backup-worktree/*' --exclude='./.git' --exclude='./.git/*' -cf - . | tar -C $(printf '%q' "$BLOG_DIR") -xf -"
   if id "$RUN_USER" >/dev/null 2>&1; then
     run chown -R "$RUN_USER:$RUN_USER" "$BLOG_DIR"
   else
@@ -427,7 +421,6 @@ ensure_acme() {
 main() {
   require_root
   require_command git
-  require_command rsync
   require_command systemctl
   require_command sysctl
   require_command sudo
