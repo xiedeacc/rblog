@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260520-sidebar-sticky" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260719-image-lightbox" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -48,7 +48,10 @@
       </main>
 
       <footer class="earth-footer">
-        <span>© {{ now() | date('%Y') }} <a href="/">{{ site.title | default('rblog') }}~</a>. All Rights Reserved. Powered by <a href="/" rel="noopener noreferrer">rblog</a>.</span>
+        <span>© {{ now() | date('%Y') }} <a href="/">{{ site.title | default('rblog') }}~</a>. Powered by <a href="/" rel="noopener noreferrer">rblog</a>.</span>
+        {% if build.rev and build.time %}
+          <span class="earth-footer__build">{{ build.rev }} · {{ build.time }}</span>
+        {% endif %}
       </footer>
     </div>
     <script>
@@ -85,6 +88,47 @@
             window.location.href = "/";
           });
         }
+
+        var articleImages = document.querySelectorAll(".post-content img, .page-content img");
+        if (articleImages.length) {
+          var imageModal = document.createElement("div");
+          imageModal.className = "earth-image-modal";
+          imageModal.hidden = true;
+          imageModal.innerHTML =
+            '<button type="button" class="earth-image-modal__backdrop" data-image-close aria-label="关闭图片预览"></button>' +
+            '<div class="earth-image-modal__dialog" role="dialog" aria-modal="true" aria-label="图片预览">' +
+              '<button type="button" class="earth-image-modal__close" data-image-close aria-label="关闭">×</button>' +
+              '<img alt="" />' +
+            '</div>';
+          document.body.appendChild(imageModal);
+
+          var previewImage = imageModal.querySelector("img");
+          var imageCloseButtons = imageModal.querySelectorAll("[data-image-close]");
+          function openImageModal(image) {
+            previewImage.src = image.currentSrc || image.src;
+            previewImage.alt = image.alt || "";
+            imageModal.hidden = false;
+            document.body.classList.add("earth-modal-open");
+          }
+          function closeImageModal() {
+            imageModal.hidden = true;
+            previewImage.removeAttribute("src");
+            document.body.classList.remove("earth-modal-open");
+          }
+          articleImages.forEach(function (image) {
+            image.addEventListener("click", function (event) {
+              event.preventDefault();
+              openImageModal(image);
+            });
+          });
+          imageCloseButtons.forEach(function (button) {
+            button.addEventListener("click", closeImageModal);
+          });
+          document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" && !imageModal.hidden) closeImageModal();
+          });
+        }
+
         var trigger = document.querySelector("[data-wechat-popup]");
         var modal = document.querySelector("[data-wechat-modal]");
         if (!trigger || !modal) return;

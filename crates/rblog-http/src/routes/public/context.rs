@@ -17,6 +17,7 @@ pub fn base_context(state: &AppState) -> Value {
         "site": site,
         "menu": Vec::<Value>::new(),
         "active_theme": active_theme,
+        "build": build_block(),
         "year": chrono::Utc::now().format("%Y").to_string(),
     })
 }
@@ -84,6 +85,13 @@ fn site_block(state: &AppState) -> Value {
         "description": description,
         "base_url": base_url,
         "locale": locale,
+    })
+}
+
+fn build_block() -> Value {
+    json!({
+        "rev": env!("RBLOG_GIT_REV"),
+        "time": env!("RBLOG_GIT_TIME"),
     })
 }
 

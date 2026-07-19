@@ -7,6 +7,8 @@ PORT="10011"
 DEST_DIR="/usr/local/blog"
 REMOTE_HOST="ubuntu@aws"
 BACKUP_REPO_URL="git@github.com:xiedeacc/blog_data.git"
+NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+NODE_VERSION="${NODE_VERSION:-24}"
 
 usage() {
   printf 'Usage: %s [local|aws|all]\n' "$0"
@@ -34,6 +36,21 @@ run_remote() {
   local host="$1"
   shift
   ssh "$host" "$@"
+}
+
+load_node_env() {
+  if command -v corepack >/dev/null 2>&1; then
+    return
+  fi
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    # shellcheck source=/dev/null
+    . "$NVM_DIR/nvm.sh"
+    nvm use "$NODE_VERSION" >/dev/null || nvm use default >/dev/null || true
+  fi
+  command -v corepack >/dev/null 2>&1 || {
+    printf '[deploy] ERROR: corepack not found; install Node via nvm or set NODE_VERSION to an installed nvm version\n' >&2
+    exit 127
+  }
 }
 
 copy_dir_local() {
@@ -163,6 +180,8 @@ EOF_TIMER
 }
 
 build_artifacts() {
+  load_node_env
+
   log "building admin SPA"
   (cd "$ROOT_DIR" && corepack pnpm --dir admin build)
 
