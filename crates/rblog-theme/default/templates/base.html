@@ -89,7 +89,7 @@
           });
         }
 
-        var articleImages = document.querySelectorAll(".post-content img, .page-content img");
+        var articleImages = Array.prototype.slice.call(document.querySelectorAll(".post-content img, .page-content img"));
         if (articleImages.length) {
           var imageModal = document.createElement("div");
           imageModal.className = "earth-image-modal";
@@ -104,9 +104,15 @@
 
           var previewImage = imageModal.querySelector("img");
           var imageCloseButtons = imageModal.querySelectorAll("[data-image-close]");
-          function openImageModal(image) {
+          var activeImageIndex = 0;
+          function showImageAt(index) {
+            activeImageIndex = (index + articleImages.length) % articleImages.length;
+            var image = articleImages[activeImageIndex];
             previewImage.src = image.currentSrc || image.src;
             previewImage.alt = image.alt || "";
+          }
+          function openImageModal(image) {
+            showImageAt(articleImages.indexOf(image));
             imageModal.hidden = false;
             document.body.classList.add("earth-modal-open");
           }
@@ -114,6 +120,10 @@
             imageModal.hidden = true;
             previewImage.removeAttribute("src");
             document.body.classList.remove("earth-modal-open");
+          }
+          function stepImage(direction) {
+            if (imageModal.hidden || articleImages.length < 2) return;
+            showImageAt(activeImageIndex + direction);
           }
           articleImages.forEach(function (image) {
             image.addEventListener("click", function (event) {
@@ -124,6 +134,12 @@
           imageCloseButtons.forEach(function (button) {
             button.addEventListener("click", closeImageModal);
           });
+          previewImage.addEventListener("click", closeImageModal);
+          imageModal.addEventListener("wheel", function (event) {
+            if (imageModal.hidden) return;
+            event.preventDefault();
+            stepImage(event.deltaY > 0 ? 1 : -1);
+          }, { passive: false });
           document.addEventListener("keydown", function (event) {
             if (event.key === "Escape" && !imageModal.hidden) closeImageModal();
           });
