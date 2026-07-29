@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode, type RefObject, type UIEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode, type RefObject, type UIEvent } from "react";
 import { App, Button, Dropdown, Space, Tooltip } from "antd";
 import {
   BoldOutlined,
@@ -248,6 +248,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
   const previewRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncSource = useRef<"editor" | "preview" | null>(null);
   const editorInputGuardUntil = useRef(0);
+  const editorInputCursorOffset = useRef<number | null>(null);
   const sourceBlockPositionCache = useRef<{ key: string; positions: HeadingPosition[] } | null>(null);
   const imageInput = useRef<HTMLInputElement | null>(null);
   const attachmentInput = useRef<HTMLInputElement | null>(null);
@@ -271,7 +272,8 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
 
   const update = (next: string) => {
     if (document.activeElement === textarea.current) {
-      editorInputGuardUntil.current = Date.now() + 350;
+      editorInputGuardUntil.current = Date.now() + 500;
+      editorInputCursorOffset.current = textarea.current?.selectionStart ?? null;
     }
     markdownRef.current = next;
     setMarkdown(next);
@@ -404,7 +406,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
     update(`${markdown.slice(0, start)}${plain}${markdown.slice(end)}`);
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!previewRef.current) return;
     const elements = [
       ...previewRef.current.querySelectorAll<HTMLElement>(
@@ -417,6 +419,37 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
         element.dataset.sourceLine = String(block.line);
       } else {
         delete element.dataset.sourceLine;
+      }
+    });
+  }, [markdown, sourceBlocks]);
+
+  useLayoutEffect(() => {
+    if (Date.now() >= editorInputGuardUntil.current) return;
+    const target = previewRef.current;
+    const source = textarea.current;
+    const offset = editorInputCursorOffset.current;
+    if (!target || !source || offset === null || !sourceBlocks.length) return;
+
+    const block =
+      [...sourceBlocks].reverse().find((item) => item.offset <= offset) ??
+      sourceBlocks[0];
+    if (!block) return;
+
+    const targetBlock = target.querySelector<HTMLElement>(`[data-source-line="${block.line}"]`);
+    if (!targetBlock) return;
+
+    const editorPositions = editorSourceBlockPositions(source);
+    const editorPosition = editorPositions.find((item) => item.id === String(block.line));
+    const editorViewportRatio = editorPosition
+      ? (editorPosition.top - source.scrollTop) / Math.max(source.clientHeight, 1)
+      : 0.35;
+    const previewAnchorRatio = Math.min(0.72, Math.max(0.2, editorViewportRatio));
+
+    scrollSyncSource.current = "editor";
+    target.scrollTop = Math.max(0, targetBlock.offsetTop - target.clientHeight * previewAnchorRatio);
+    requestAnimationFrame(() => {
+      if (scrollSyncSource.current === "editor") {
+        scrollSyncSource.current = null;
       }
     });
   }, [markdown, sourceBlocks]);
@@ -487,6 +520,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
   const syncFromEditor = (source: HTMLTextAreaElement) => {
     const target = previewRef.current;
     if (!target || scrollSyncSource.current || !sourceBlocks.length) return;
+    if (Date.now() < editorInputGuardUntil.current) return;
     const positions = editorSourceBlockPositions(source);
     const activePosition =
       [...positions].reverse().find((position) => position.top <= source.scrollTop + 8) ??
