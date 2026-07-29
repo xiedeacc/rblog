@@ -191,6 +191,7 @@ async fn home_lists_published_posts() {
     assert!(body.contains("First post"));
     assert!(body.contains("Second post"));
     assert!(!body.contains("Private post"));
+    assert!(!body.contains("class=\"earth-quick-post\""));
     // Site title from system config map.
     assert!(body.contains("rblog test"));
 }
@@ -235,6 +236,7 @@ async fn signed_in_home_lists_private_posts() {
         .expect("body");
     assert!(body.contains("[private] Private post"));
     assert!(body.contains("data-user-menu"));
+    assert!(body.contains("class=\"earth-quick-post\""));
     assert!(body.contains("控制台"));
     assert!(body.contains("退出登录"));
 

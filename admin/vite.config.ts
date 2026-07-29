@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
@@ -10,10 +10,12 @@ import path from "node:path";
 // runtime when `embed-admin` is enabled).
 export default defineConfig({
   base: "/admin/",
-  plugins: [react()],
+  plugins: [react() as unknown as PluginOption],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "d3-array": path.resolve(__dirname, "node_modules/d3-array"),
+      "d3-shape": path.resolve(__dirname, "node_modules/d3-shape"),
     },
   },
   server: {

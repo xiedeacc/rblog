@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260719-image-lightbox" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-quick-post" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -87,6 +87,253 @@
             await fetch("/api/admin/auth/logout", { method: "POST" });
             window.location.href = "/";
           });
+        }
+
+        var quickPost = document.querySelector("[data-quick-post]");
+        if (quickPost) {
+          var quickPostForm = quickPost.querySelector("[data-quick-post-form]");
+          var quickPostText = quickPost.querySelector("[data-quick-post-text]");
+          var quickPostFile = quickPost.querySelector("[data-quick-post-file]");
+          var quickPostImage = quickPost.querySelector("[data-quick-post-image]");
+          var quickPostEmoji = quickPost.querySelector("[data-quick-post-emoji]");
+          var quickPostEmojiPanel = quickPost.querySelector("[data-quick-post-emoji-panel]");
+          var quickPostPreviews = quickPost.querySelector("[data-quick-post-previews]");
+          var quickPostStatus = quickPost.querySelector("[data-quick-post-status]");
+          var quickPostSubmit = quickPost.querySelector("[data-quick-post-submit]");
+          var quickPostImages = [];
+          var quickPostPosting = false;
+
+          function quickPostRandomId() {
+            var bytes = new Uint8Array(4);
+            if (window.crypto && window.crypto.getRandomValues) {
+              window.crypto.getRandomValues(bytes);
+              return Array.prototype.map.call(bytes, function (byte) {
+                return byte.toString(16).padStart(2, "0");
+              }).join("");
+            }
+            return Math.random().toString(16).slice(2, 10);
+          }
+
+          function quickPostSlug() {
+            var stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+            return "quick-" + stamp + "-" + quickPostRandomId();
+          }
+
+          function quickPostImageExt(type) {
+            if (type === "image/jpeg") return "jpg";
+            if (type === "image/gif") return "gif";
+            if (type === "image/webp") return "webp";
+            return "png";
+          }
+
+          function quickPostNormalizeImage(file) {
+            if (file.name) return file;
+            return new File([file], "pasted-image-" + Date.now() + "." + quickPostImageExt(file.type), { type: file.type });
+          }
+
+          function quickPostMarkdownAlt(value) {
+            return (value || "image").replace(/\.[^.]+$/, "").replace(/[\[\]\n\r]/g, " ").trim() || "image";
+          }
+
+          async function quickPostJson(path, init) {
+            var response = await fetch(path, Object.assign({ credentials: "same-origin" }, init || {}));
+            var text = await response.text();
+            var body = null;
+            if (text) {
+              try {
+                body = JSON.parse(text);
+              } catch (_error) {
+                body = text;
+              }
+            }
+            if (!response.ok) {
+              if (response.status === 401 || response.status === 403) {
+                window.location.href = "/admin/login";
+                throw new Error("需要重新登录");
+              }
+              var message = typeof body === "string" ? body : (body && body.error && (body.error.message || body.error));
+              throw new Error(message || response.status + " " + response.statusText);
+            }
+            return body;
+          }
+
+          async function quickPostUploadImage(file) {
+            var form = new FormData();
+            form.append("file", file);
+            form.append("group", "quick-posts");
+            return quickPostJson("/api/admin/attachments", { method: "POST", body: form });
+          }
+
+          function quickPostContentReady() {
+            return Boolean(quickPostText.value.trim() || quickPostImages.some(function (item) {
+              return !item.removed && item.uploaded;
+            }));
+          }
+
+          function quickPostRender() {
+            var activeImages = quickPostImages.filter(function (item) { return !item.removed; });
+            var uploading = activeImages.some(function (item) { return item.uploading; });
+            var failed = activeImages.some(function (item) { return item.error; });
+            quickPostPreviews.innerHTML = "";
+            activeImages.forEach(function (item) {
+              var card = document.createElement("div");
+              card.className = "earth-quick-post__preview";
+              var image = document.createElement("img");
+              image.src = item.previewUrl;
+              image.alt = item.file.name;
+              var remove = document.createElement("button");
+              remove.type = "button";
+              remove.className = "earth-quick-post__remove";
+              remove.setAttribute("aria-label", "移除图片");
+              remove.innerHTML = '<span class="i-tabler-x"></span>';
+              remove.addEventListener("click", function () {
+                item.removed = true;
+                URL.revokeObjectURL(item.previewUrl);
+                quickPostRender();
+              });
+              card.append(image, remove);
+              quickPostPreviews.append(card);
+            });
+            quickPostPreviews.hidden = activeImages.length === 0;
+            quickPostStatus.textContent = quickPostPosting
+              ? "发布中..."
+              : failed
+                ? "有图片上传失败，请移除后重试"
+                : uploading
+                  ? "图片上传中..."
+                  : "";
+            quickPostSubmit.disabled = quickPostPosting || uploading || failed || !quickPostContentReady();
+          }
+
+          function quickPostResizeText() {
+            quickPostText.style.height = "auto";
+            quickPostText.style.height = Math.min(280, Math.max(72, quickPostText.scrollHeight)) + "px";
+          }
+
+          function quickPostAddFiles(files) {
+            Array.prototype.slice.call(files)
+              .filter(function (file) { return file.type && file.type.indexOf("image/") === 0; })
+              .map(quickPostNormalizeImage)
+              .forEach(function (file) {
+                var item = {
+                  id: quickPostRandomId(),
+                  file: file,
+                  previewUrl: URL.createObjectURL(file),
+                  uploaded: null,
+                  uploading: true,
+                  removed: false,
+                  error: null,
+                };
+                quickPostImages.push(item);
+                item.upload = quickPostUploadImage(file)
+                  .then(function (uploaded) {
+                    item.uploaded = uploaded;
+                    item.uploading = false;
+                    quickPostRender();
+                    return uploaded;
+                  })
+                  .catch(function (error) {
+                    item.error = error;
+                    item.uploading = false;
+                    quickPostRender();
+                    return null;
+                  });
+              });
+            quickPostRender();
+          }
+
+          function quickPostInsertText(value) {
+            var start = quickPostText.selectionStart || 0;
+            var end = quickPostText.selectionEnd || start;
+            quickPostText.value = quickPostText.value.slice(0, start) + value + quickPostText.value.slice(end);
+            quickPostText.focus();
+            quickPostText.selectionStart = start + value.length;
+            quickPostText.selectionEnd = start + value.length;
+            quickPostResizeText();
+            quickPostRender();
+          }
+
+          quickPostText.addEventListener("input", function () {
+            quickPostResizeText();
+            quickPostRender();
+          });
+          quickPostText.addEventListener("paste", function (event) {
+            var images = Array.prototype.slice.call(event.clipboardData.files || []).filter(function (file) {
+              return file.type && file.type.indexOf("image/") === 0;
+            });
+            if (!images.length) return;
+            event.preventDefault();
+            quickPostAddFiles(images);
+          });
+          quickPostImage.addEventListener("click", function () {
+            quickPostFile.click();
+          });
+          quickPostFile.addEventListener("change", function (event) {
+            quickPostAddFiles(event.target.files || []);
+            event.target.value = "";
+          });
+          quickPostEmoji.addEventListener("click", function (event) {
+            event.stopPropagation();
+            quickPostEmojiPanel.hidden = !quickPostEmojiPanel.hidden;
+          });
+          quickPostEmojiPanel.querySelectorAll("button").forEach(function (button) {
+            button.addEventListener("click", function () {
+              quickPostInsertText(button.textContent || "");
+              quickPostEmojiPanel.hidden = true;
+            });
+          });
+          document.addEventListener("click", function (event) {
+            if (!quickPostEmojiPanel.contains(event.target) && event.target !== quickPostEmoji) {
+              quickPostEmojiPanel.hidden = true;
+            }
+          });
+          quickPostForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            if (quickPostSubmit.disabled) return;
+            quickPostPosting = true;
+            quickPostStatus.textContent = "发布中...";
+            quickPostRender();
+            try {
+              var activeImages = quickPostImages.filter(function (item) { return !item.removed; });
+              await Promise.all(activeImages.map(function (item) { return item.upload; }));
+              var uploadedImages = activeImages.filter(function (item) { return item.uploaded; });
+              var text = quickPostText.value.trim();
+              var imageMarkdown = uploadedImages.map(function (item) {
+                return "![" + quickPostMarkdownAlt(item.file.name) + "](" + item.uploaded.url + ")";
+              }).join("\n\n");
+              var markdown = [text, imageMarkdown].filter(Boolean).join("\n\n");
+              if (!markdown) return;
+              var cleanTitle = text.replace(/\s+/g, " ").trim();
+              var title = cleanTitle.slice(0, 48) || ("图片动态 " + new Date().toLocaleString("zh-CN", { hour12: false }));
+              var slug = quickPostSlug();
+              var created = await quickPostJson("/api/admin/posts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: slug,
+                  title: title,
+                  slug: slug,
+                  markdown: markdown,
+                  excerpt: cleanTitle.slice(0, 140) || ("分享了 " + uploadedImages.length + " 张图片"),
+                  visible: "PUBLIC",
+                  allow_comment: true,
+                }),
+              });
+              await quickPostJson("/api/admin/posts/" + encodeURIComponent(created.name) + "/publish", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ visible: "PUBLIC" }),
+              });
+              quickPostStatus.textContent = "发布成功，正在刷新...";
+              window.location.reload();
+            } catch (error) {
+              quickPostPosting = false;
+              quickPostStatus.textContent = error instanceof Error ? error.message : "发布失败";
+              quickPostRender();
+            }
+          });
+          quickPostResizeText();
+          quickPostRender();
         }
 
         var articleImages = Array.prototype.slice.call(document.querySelectorAll(".post-content img, .page-content img"));

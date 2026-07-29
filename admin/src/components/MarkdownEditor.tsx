@@ -247,6 +247,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncSource = useRef<"editor" | "preview" | null>(null);
+  const editorInputGuardUntil = useRef(0);
   const sourceBlockPositionCache = useRef<{ key: string; positions: HeadingPosition[] } | null>(null);
   const imageInput = useRef<HTMLInputElement | null>(null);
   const attachmentInput = useRef<HTMLInputElement | null>(null);
@@ -269,6 +270,9 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
   );
 
   const update = (next: string) => {
+    if (document.activeElement === textarea.current) {
+      editorInputGuardUntil.current = Date.now() + 350;
+    }
     markdownRef.current = next;
     setMarkdown(next);
     onChange(next);
@@ -499,6 +503,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
 
   const syncFromPreview = (source: HTMLDivElement) => {
     if (!textarea.current || scrollSyncSource.current || !sourceBlocks.length) return;
+    if (Date.now() < editorInputGuardUntil.current) return;
     const elements = [...source.querySelectorAll<HTMLElement>("[data-source-line]")];
     if (!elements.length) return;
     const scrollTop = source.scrollTop + 12;

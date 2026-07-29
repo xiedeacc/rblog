@@ -3,6 +3,46 @@
   <section class="earth-shell">
     <div class="earth-content">
       <section class="earth-post-list">
+        {% if current_user %}
+          <section class="earth-quick-post" data-quick-post>
+            <div class="earth-quick-post__avatar" aria-hidden="true">
+              <span class="i-tabler-user"></span>
+            </div>
+            <form class="earth-quick-post__form" data-quick-post-form>
+              <textarea
+                data-quick-post-text
+                rows="2"
+                maxlength="5000"
+                placeholder="有什么新鲜事？"
+                aria-label="短文内容"
+              ></textarea>
+              <div class="earth-quick-post__previews" data-quick-post-previews hidden></div>
+              <div class="earth-quick-post__status" data-quick-post-status role="status" aria-live="polite"></div>
+              <div class="earth-quick-post__bar">
+                <div class="earth-quick-post__tools">
+                  <button type="button" data-quick-post-image aria-label="添加图片" title="添加图片">
+                    <span class="i-tabler-photo"></span>
+                  </button>
+                  <button type="button" data-quick-post-emoji aria-label="添加表情" title="添加表情">
+                    <span class="i-tabler-mood-smile"></span>
+                  </button>
+                  <input data-quick-post-file type="file" accept="image/*" multiple hidden />
+                  <div class="earth-quick-post__emoji" data-quick-post-emoji-panel hidden>
+                    <button type="button">😀</button>
+                    <button type="button">😂</button>
+                    <button type="button">😍</button>
+                    <button type="button">👍</button>
+                    <button type="button">🎉</button>
+                    <button type="button">🔥</button>
+                    <button type="button">🤔</button>
+                    <button type="button">🙏</button>
+                  </div>
+                </div>
+                <button class="earth-quick-post__submit" type="submit" data-quick-post-submit disabled>发布</button>
+              </div>
+            </form>
+          </section>
+        {% endif %}
         {% for post in posts %}
           {% include '_post_card.html' %}
         {% else %}
