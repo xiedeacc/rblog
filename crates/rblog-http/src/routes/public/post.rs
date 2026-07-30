@@ -34,6 +34,7 @@ pub async fn detail(
     let post = json!({
         "name": detail.name,
         "title": detail.title,
+        "quick_post": detail.template.as_deref() == Some("quick-post") || detail.name.starts_with("quick-"),
         "slug": detail.slug,
         "permalink": detail.permalink,
         "publish_time": detail.publish_time,

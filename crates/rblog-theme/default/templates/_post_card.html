@@ -1,7 +1,17 @@
 <article class="earth-post-card">
   <div class="earth-post-card__body">
-    <h2><a href="{{ post.permalink }}">{% if post.pinned %}[置顶] {% endif %}{% if post.visible == "PRIVATE" %}[private] {% endif %}{{ post.title }}</a></h2>
-    {% if post.excerpt %}<p class="earth-post-card__excerpt">{{ post.excerpt }}</p>{% endif %}
+    {% if not post.quick_post %}
+      <h2><a href="{{ post.permalink }}">{% if post.pinned %}[置顶] {% endif %}{% if post.visible == "PRIVATE" %}[private] {% endif %}{{ post.title }}</a></h2>
+    {% endif %}
+    {% if post.excerpt %}
+      <p class="earth-post-card__excerpt">
+        {% if not post.quick_post %}
+          {{ post.excerpt }}
+        {% else %}
+          <a href="{{ post.permalink }}">{% if post.pinned %}[置顶] {% endif %}{% if post.visible == "PRIVATE" %}[private] {% endif %}{{ post.excerpt }}</a>
+        {% endif %}
+      </p>
+    {% endif %}
   </div>
   <footer class="earth-post-card__meta">
     <span class="earth-author-icon"><span class="i-tabler-world"></span></span>

@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}{{ post.title }} — {{ site.title | default('rblog') }}{% endblock %}
+{% block title %}{% if not post.quick_post %}{{ post.title }} — {% endif %}{{ site.title | default('rblog') }}{% endblock %}
 {% block body %}
   <article class="post">
     <header class="post-header">
-      <h1>{{ post.title }}</h1>
+      {% if not post.quick_post %}<h1>{{ post.title }}</h1>{% endif %}
       <p class="post-meta">
         <time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time>
         · 阅读 {{ post.visits | default(0) }}

@@ -661,10 +661,13 @@ pub struct PostListItem {
     pub visits: i32,
     pub pinned: bool,
     pub priority: i32,
+    pub quick_post: bool,
 }
 
 impl PostListItem {
     fn from_detail(detail: &PostDetail) -> Self {
+        let quick_post =
+            detail.template.as_deref() == Some("quick-post") || detail.name.starts_with("quick-");
         Self {
             name: detail.name.clone(),
             title: detail.title.clone(),
@@ -686,6 +689,7 @@ impl PostListItem {
             visits: detail.visits,
             pinned: detail.pinned,
             priority: detail.priority,
+            quick_post,
         }
     }
 }

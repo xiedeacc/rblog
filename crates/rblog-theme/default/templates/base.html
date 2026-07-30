@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-article-image-v2" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-quick-post-titleless" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -314,6 +314,7 @@
                   title: title,
                   slug: slug,
                   markdown: markdown,
+                  template: "quick-post",
                   excerpt: cleanTitle.slice(0, 140) || ("分享了 " + uploadedImages.length + " 张图片"),
                   visible: "PUBLIC",
                   allow_comment: true,

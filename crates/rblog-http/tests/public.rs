@@ -254,6 +254,77 @@ async fn signed_in_home_lists_private_posts() {
 }
 
 #[tokio::test]
+async fn quick_post_renders_without_title() {
+    let h = boot().await;
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("client");
+    let login = client
+        .post(format!("http://{}/api/admin/auth/login", h.addr))
+        .json(&serde_json::json!({
+            "username": "admin",
+            "password": "supersecret",
+        }))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(login.status(), 200);
+
+    let created = client
+        .post(format!("http://{}/api/admin/posts", h.addr))
+        .json(&serde_json::json!({
+            "name": "quick-titleless",
+            "title": "Internal quick post title",
+            "slug": "quick-titleless",
+            "markdown": "Quick body without title.",
+            "template": "quick-post",
+            "excerpt": "Quick body without title.",
+            "visible": "PUBLIC",
+            "allow_comment": true
+        }))
+        .send()
+        .await
+        .expect("create quick post");
+    assert_eq!(created.status(), 201);
+
+    let published = client
+        .post(format!(
+            "http://{}/api/admin/posts/quick-titleless/publish",
+            h.addr
+        ))
+        .json(&serde_json::json!({"visible": "PUBLIC"}))
+        .send()
+        .await
+        .expect("publish quick post");
+    assert_eq!(published.status(), 200);
+
+    let home = client
+        .get(format!("http://{}/", h.addr))
+        .send()
+        .await
+        .expect("home")
+        .text()
+        .await
+        .expect("home body");
+    assert!(home.contains("quick-titleless"));
+    assert!(home.contains("Quick body without title."));
+    assert!(!home.contains("Internal quick post title"));
+
+    let detail = client
+        .get(format!("http://{}/archives/quick-titleless", h.addr))
+        .send()
+        .await
+        .expect("detail")
+        .text()
+        .await
+        .expect("detail body");
+    assert!(detail.contains("Quick body without title."));
+    assert!(!detail.contains("<h1>Internal quick post title</h1>"));
+    assert!(!detail.contains("<title>Internal quick post title"));
+}
+
+#[tokio::test]
 async fn post_detail_renders_html() {
     let h = boot().await;
     let (status, body) = fetch_text(h.addr, "/archives/first").await;

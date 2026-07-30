@@ -5,7 +5,7 @@
     <h1>Archive</h1>
     <ul class="archive-list">
       {% for post in posts %}
-        <li><time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time> · <a href="{{ post.permalink }}">{{ post.title }}</a></li>
+        <li><time datetime="{{ post.publish_time | isoformat }}">{{ post.publish_time | date('%Y-%m-%d') }}</time> · <a href="{{ post.permalink }}">{% if post.quick_post and post.excerpt %}{{ post.excerpt }}{% else %}{{ post.title }}{% endif %}</a></li>
       {% endfor %}
     </ul>
     {% include '_pagination.html' %}
