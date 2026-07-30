@@ -1102,12 +1102,13 @@ a {
   cursor: zoom-in;
 }
 
+/* Width and horizontal offset are set inline so they can be measured against the
+   article column instead of a list-indented parent; see base.html. */
 .post-content img.rblog-article-image,
 .page-content img.rblog-article-image,
 .earth-post-card__content img.rblog-article-image {
-  width: 50%;
-  max-width: 50%;
-  object-fit: contain;
+  position: relative;
+  max-width: none;
 }
 
 .earth-image-modal[hidden] {
@@ -1463,13 +1464,6 @@ a {
 
   .earth-quick-post__previews {
     grid-template-columns: 1fr;
-  }
-
-  .post-content img.rblog-article-image,
-  .page-content img.rblog-article-image,
-  .earth-post-card__content img.rblog-article-image {
-    width: 100%;
-    max-width: 100%;
   }
 
   .earth-sidebar {

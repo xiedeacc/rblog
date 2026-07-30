@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-quick-post-titleless" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-article-image-column-width" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -337,21 +337,52 @@
           quickPostRender();
         }
 
-        function isSizedArticleImage(src) {
-          if (!src) return false;
-          try {
-            var path = new URL(src, window.location.href).pathname.toLowerCase();
-            return /\.(png|jpe?g|webp)$/.test(path);
-          } catch (_error) {
-            var clean = String(src).split("#")[0].split("?")[0].toLowerCase();
-            return /\.(png|jpe?g|webp)$/.test(clean);
+        var ARTICLE_IMAGE_CONTAINER_SELECTOR = ".post-content, .page-content, .earth-post-card__content";
+        var articleImageNarrowQuery = window.matchMedia("(max-width: 640px)");
+
+        function updateArticleImageSizing(image) {
+          var container = image.closest(ARTICLE_IMAGE_CONTAINER_SELECTOR);
+          var containerWidth = container ? container.clientWidth : 0;
+          if (!image.naturalWidth || !containerWidth) return;
+
+          if (image.naturalWidth <= containerWidth * 0.5) {
+            image.classList.remove("rblog-article-image");
+            image.style.width = "";
+            image.style.left = "";
+            return;
           }
+
+          // Size against the article column, not the direct parent: images nested
+          // in list items would otherwise resolve a percentage width against the
+          // indented <p> and come out narrower than top-level ones.
+          image.classList.add("rblog-article-image");
+          image.style.left = "0px";
+          image.style.width = (articleImageNarrowQuery.matches ? containerWidth : containerWidth / 2) + "px";
+
+          // margin:auto only centres within that indented parent, so shift the
+          // image back onto the column's centre line.
+          var imageRect = image.getBoundingClientRect();
+          var containerRect = container.getBoundingClientRect();
+          var shift = (containerRect.left + containerRect.width / 2) - (imageRect.left + imageRect.width / 2);
+          image.style.left = shift + "px";
         }
 
         var articleImages = Array.prototype.slice.call(document.querySelectorAll(".post-content img, .page-content img, .earth-post-card__content img"));
         articleImages.forEach(function (image) {
-          var src = image.getAttribute("src") || image.currentSrc || image.src || "";
-          image.classList.toggle("rblog-article-image", isSizedArticleImage(src));
+          if (image.complete) {
+            updateArticleImageSizing(image);
+          } else {
+            image.addEventListener("load", function () {
+              updateArticleImageSizing(image);
+            });
+          }
+        });
+        var articleImageResizeTimer = null;
+        window.addEventListener("resize", function () {
+          clearTimeout(articleImageResizeTimer);
+          articleImageResizeTimer = setTimeout(function () {
+            articleImages.forEach(updateArticleImageSizing);
+          }, 150);
         });
         if (articleImages.length) {
           var imageModal = document.createElement("div");
