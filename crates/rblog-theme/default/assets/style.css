@@ -1084,10 +1084,44 @@ a {
 .post-content img,
 .page-content img {
   display: block;
-  max-width: 50%;
+  width: auto;
+  max-width: 100%;
   height: auto;
   margin: 1.5rem auto;
   cursor: zoom-in;
+}
+
+.post-content img:is(
+  [src$=".png" i],
+  [src*=".png?" i],
+  [src*=".png#" i],
+  [src$=".jpg" i],
+  [src*=".jpg?" i],
+  [src*=".jpg#" i],
+  [src$=".jpeg" i],
+  [src*=".jpeg?" i],
+  [src*=".jpeg#" i],
+  [src$=".webp" i],
+  [src*=".webp?" i],
+  [src*=".webp#" i]
+),
+.page-content img:is(
+  [src$=".png" i],
+  [src*=".png?" i],
+  [src*=".png#" i],
+  [src$=".jpg" i],
+  [src*=".jpg?" i],
+  [src*=".jpg#" i],
+  [src$=".jpeg" i],
+  [src*=".jpeg?" i],
+  [src*=".jpeg#" i],
+  [src$=".webp" i],
+  [src*=".webp?" i],
+  [src*=".webp#" i]
+) {
+  width: 50%;
+  max-width: 50%;
+  object-fit: contain;
 }
 
 .earth-image-modal[hidden] {
@@ -1445,8 +1479,35 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .post-content img,
-  .page-content img {
+  .post-content img:is(
+    [src$=".png" i],
+    [src*=".png?" i],
+    [src*=".png#" i],
+    [src$=".jpg" i],
+    [src*=".jpg?" i],
+    [src*=".jpg#" i],
+    [src$=".jpeg" i],
+    [src*=".jpeg?" i],
+    [src*=".jpeg#" i],
+    [src$=".webp" i],
+    [src*=".webp?" i],
+    [src*=".webp#" i]
+  ),
+  .page-content img:is(
+    [src$=".png" i],
+    [src*=".png?" i],
+    [src*=".png#" i],
+    [src$=".jpg" i],
+    [src*=".jpg?" i],
+    [src*=".jpg#" i],
+    [src$=".jpeg" i],
+    [src*=".jpeg?" i],
+    [src*=".jpeg#" i],
+    [src$=".webp" i],
+    [src*=".webp?" i],
+    [src*=".webp#" i]
+  ) {
+    width: 100%;
     max-width: 100%;
   }
 
