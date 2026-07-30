@@ -1082,7 +1082,8 @@ a {
 .post-header h1 { font-size: 2.25rem; margin: 0 0 .5rem; }
 .post-meta { color: var(--earth-muted); margin-bottom: 1.5rem; }
 .post-content img,
-.page-content img {
+.page-content img,
+.earth-post-card__content img {
   display: block;
   width: auto;
   max-width: 100%;
@@ -1091,34 +1092,9 @@ a {
   cursor: zoom-in;
 }
 
-.post-content img:is(
-  [src$=".png" i],
-  [src*=".png?" i],
-  [src*=".png#" i],
-  [src$=".jpg" i],
-  [src*=".jpg?" i],
-  [src*=".jpg#" i],
-  [src$=".jpeg" i],
-  [src*=".jpeg?" i],
-  [src*=".jpeg#" i],
-  [src$=".webp" i],
-  [src*=".webp?" i],
-  [src*=".webp#" i]
-),
-.page-content img:is(
-  [src$=".png" i],
-  [src*=".png?" i],
-  [src*=".png#" i],
-  [src$=".jpg" i],
-  [src*=".jpg?" i],
-  [src*=".jpg#" i],
-  [src$=".jpeg" i],
-  [src*=".jpeg?" i],
-  [src*=".jpeg#" i],
-  [src$=".webp" i],
-  [src*=".webp?" i],
-  [src*=".webp#" i]
-) {
+.post-content img.rblog-article-image,
+.page-content img.rblog-article-image,
+.earth-post-card__content img.rblog-article-image {
   width: 50%;
   max-width: 50%;
   object-fit: contain;
@@ -1479,34 +1455,9 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .post-content img:is(
-    [src$=".png" i],
-    [src*=".png?" i],
-    [src*=".png#" i],
-    [src$=".jpg" i],
-    [src*=".jpg?" i],
-    [src*=".jpg#" i],
-    [src$=".jpeg" i],
-    [src*=".jpeg?" i],
-    [src*=".jpeg#" i],
-    [src$=".webp" i],
-    [src*=".webp?" i],
-    [src*=".webp#" i]
-  ),
-  .page-content img:is(
-    [src$=".png" i],
-    [src*=".png?" i],
-    [src*=".png#" i],
-    [src$=".jpg" i],
-    [src*=".jpg?" i],
-    [src*=".jpg#" i],
-    [src$=".jpeg" i],
-    [src*=".jpeg?" i],
-    [src*=".jpeg#" i],
-    [src$=".webp" i],
-    [src*=".webp?" i],
-    [src*=".webp#" i]
-  ) {
+  .post-content img.rblog-article-image,
+  .page-content img.rblog-article-image,
+  .earth-post-card__content img.rblog-article-image {
     width: 100%;
     max-width: 100%;
   }

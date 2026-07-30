@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-quick-post" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-article-image-v2" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -336,7 +336,22 @@
           quickPostRender();
         }
 
-        var articleImages = Array.prototype.slice.call(document.querySelectorAll(".post-content img, .page-content img"));
+        function isSizedArticleImage(src) {
+          if (!src) return false;
+          try {
+            var path = new URL(src, window.location.href).pathname.toLowerCase();
+            return /\.(png|jpe?g|webp)$/.test(path);
+          } catch (_error) {
+            var clean = String(src).split("#")[0].split("?")[0].toLowerCase();
+            return /\.(png|jpe?g|webp)$/.test(clean);
+          }
+        }
+
+        var articleImages = Array.prototype.slice.call(document.querySelectorAll(".post-content img, .page-content img, .earth-post-card__content img"));
+        articleImages.forEach(function (image) {
+          var src = image.getAttribute("src") || image.currentSrc || image.src || "";
+          image.classList.toggle("rblog-article-image", isSizedArticleImage(src));
+        });
         if (articleImages.length) {
           var imageModal = document.createElement("div");
           imageModal.className = "earth-image-modal";
