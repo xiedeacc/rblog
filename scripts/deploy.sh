@@ -156,6 +156,7 @@ User=${run_user}
 WorkingDirectory=${DEST_DIR}
 Environment=RBLOG_BACKUP_REPO_URL=${BACKUP_REPO_URL}
 Environment=RBLOG_BACKUP_WORK_DIR=${DEST_DIR}/.backup-worktree
+Environment=RBLOG_BACKUP_DB=${DEST_DIR}/data/rblog.db
 ExecStart=${DEST_DIR}/bin/rblog-backup
 EOF_SERVICE
 }
