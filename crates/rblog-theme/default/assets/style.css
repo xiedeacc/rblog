@@ -1174,10 +1174,10 @@ a {
 .post-content code,
 .page-content code,
 .comment-content code {
-  border-radius: 5px;
-  background: #111827;
+  border-radius: 3px;
+  background: #f0f0f0;
   padding: .12rem .35rem;
-  color: #e5e7eb;
+  color: #000;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: .92em;
 }
@@ -1186,12 +1186,12 @@ a {
 .page-content pre,
 .comment-content pre {
   overflow-x: auto;
-  border: 1px solid #1f2937;
-  border-radius: 8px;
-  background: #0b1020;
-  padding: 1rem 1.1rem;
-  color: #e5e7eb;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  border: 0;
+  border-radius: 3px;
+  background: #f5f5f5;
+  padding: 1em;
+  color: #333;
+  box-shadow: none;
 }
 
 .post-content pre code,
@@ -1208,6 +1208,35 @@ a {
   tab-size: 2;
 }
 
+.post-content pre.mermaid,
+.page-content pre.mermaid {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  border: 0;
+  background: #fff;
+  padding: 1rem 0;
+  color: #111827;
+  box-shadow: none;
+}
+
+.post-content pre.mermaid svg,
+.page-content pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.post-content pre.mermaid.mermaid-error,
+.page-content pre.mermaid.mermaid-error {
+  display: block;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  padding: 1rem 1.1rem;
+  color: #991b1b;
+  white-space: pre-wrap;
+}
+
 .post-content .tok-keyword,
 .post-content .tok-storage,
 .post-content .tok-storage.tok-type,
@@ -1219,7 +1248,7 @@ a {
 .comment-content .tok-keyword,
 .comment-content .tok-storage,
 .comment-content .tok-storage.tok-type,
-.comment-content .tok-type { color: #c084fc; }
+.comment-content .tok-type { color: #a71d5d; }
 
 .post-content .tok-string,
 .post-content .tok-constant.tok-character,
@@ -1229,7 +1258,7 @@ a {
 .page-content .tok-constant.tok-other,
 .comment-content .tok-string,
 .comment-content .tok-constant.tok-character,
-.comment-content .tok-constant.tok-other { color: #86efac; }
+.comment-content .tok-constant.tok-other { color: #183691; }
 
 .post-content .tok-comment,
 .post-content .tok-punctuation.tok-definition.tok-comment,
@@ -1237,7 +1266,7 @@ a {
 .page-content .tok-punctuation.tok-definition.tok-comment,
 .comment-content .tok-comment,
 .comment-content .tok-punctuation.tok-definition.tok-comment {
-  color: #94a3b8;
+  color: #969896;
   font-style: italic;
 }
 
@@ -1249,7 +1278,7 @@ a {
 .page-content .tok-numeric,
 .comment-content .tok-constant.tok-numeric,
 .comment-content .tok-constant.tok-language,
-.comment-content .tok-numeric { color: #fbbf24; }
+.comment-content .tok-numeric { color: #0086b3; }
 
 .post-content .tok-entity.tok-name.tok-function,
 .post-content .tok-support.tok-function,
@@ -1259,14 +1288,14 @@ a {
 .page-content .tok-function,
 .comment-content .tok-entity.tok-name.tok-function,
 .comment-content .tok-support.tok-function,
-.comment-content .tok-function { color: #67e8f9; }
+.comment-content .tok-function { color: #795da3; }
 
 .post-content .tok-variable,
 .post-content .tok-entity.tok-name,
 .page-content .tok-variable,
 .page-content .tok-entity.tok-name,
 .comment-content .tok-variable,
-.comment-content .tok-entity.tok-name { color: #f9a8d4; }
+.comment-content .tok-entity.tok-name { color: #333; }
 
 .post-content blockquote,
 .page-content blockquote { border-left: 3px solid var(--earth-blue); margin-left: 0; padding-left: 1rem; color: var(--earth-muted); }

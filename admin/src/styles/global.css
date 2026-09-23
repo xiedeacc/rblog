@@ -985,20 +985,22 @@ body {
 
 .markdown-preview pre {
   overflow: auto;
-  border-radius: 0.5rem;
-  background: #0f172a;
-  color: #e5e7eb;
-  padding: 1rem;
+  border-radius: 3px;
+  background: #f5f5f5;
+  color: #333;
+  padding: 1em;
 }
 
 .markdown-preview code {
-  border-radius: 0.25rem;
-  background: #f3f4f6;
+  border-radius: 3px;
+  background: #f0f0f0;
+  color: #000;
   padding: 0.1rem 0.3rem;
 }
 
 .markdown-preview pre code {
   background: transparent;
+  color: inherit;
   padding: 0;
 }
 
@@ -1036,6 +1038,18 @@ body {
 .mermaid {
   background: #fff !important;
   color: #111827 !important;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid.mermaid-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 1024px) {

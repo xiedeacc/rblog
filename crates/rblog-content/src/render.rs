@@ -3,9 +3,9 @@
 //! Pipeline order:
 //! 1. Parse Markdown with [`comrak`] using GFM extensions (tables,
 //!    strikethrough, task-lists, autolinks, footnotes, header IDs).
-//! 2. Walk the parsed AST and replace `code_block` nodes that have a
-//!    `info_string` with syntect-highlighted HTML (CSS classes, theme-able
-//!    by the consumer).
+//! 2. Walk the parsed AST and replace Mermaid blocks with safe, renderable
+//!    placeholders, and other named `code_block` nodes with
+//!    syntect-highlighted HTML (CSS classes, theme-able by the consumer).
 //! 3. Render to HTML.
 //! 4. Pass through [`ammonia`] to drop anything dangerous.
 //!
@@ -117,7 +117,13 @@ impl MarkdownPipeline {
         let mut data = node.data.borrow_mut();
         if let NodeValue::CodeBlock(ref cb) = data.value {
             let lang = cb.info.split_ascii_whitespace().next().unwrap_or("").trim();
-            if !lang.is_empty() {
+            if lang.eq_ignore_ascii_case("mermaid") {
+                let source = escape_html_text(&cb.literal);
+                data.value = NodeValue::HtmlBlock(comrak::nodes::NodeHtmlBlock {
+                    block_type: 7,
+                    literal: format!("<pre class=\"mermaid\">{source}</pre>"),
+                });
+            } else if !lang.is_empty() {
                 if let Some(syntax) = self.syntax_set.find_syntax_by_token(lang) {
                     let mut html = ClassedHTMLGenerator::new_with_class_style(
                         syntax,
@@ -147,6 +153,13 @@ impl MarkdownPipeline {
         }
         Ok(())
     }
+}
+
+fn escape_html_text(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 impl Default for MarkdownPipeline {
@@ -315,6 +328,25 @@ mod tests {
         // No syntect classes, but still a <pre><code> wrapper from comrak.
         assert!(r.html.contains("<pre"));
         assert!(!r.html.contains("tok-"));
+    }
+
+    #[test]
+    fn mermaid_block_is_emitted_for_client_side_rendering() {
+        let r = render_markdown("```mermaid\ngraph TD\n  A[Start] --> B[End]\n```").unwrap();
+        assert!(
+            r.html.contains("<pre class=\"mermaid\">graph TD"),
+            "got: {}",
+            r.html
+        );
+        assert!(!r.html.contains("<code"), "got: {}", r.html);
+    }
+
+    #[test]
+    fn mermaid_source_is_html_escaped() {
+        let r =
+            render_markdown("```mermaid\ngraph TD\n  A[<script>alert(1)</script>]\n```").unwrap();
+        assert!(!r.html.contains("<script>"), "got: {}", r.html);
+        assert!(r.html.contains("&lt;script&gt;"), "got: {}", r.html);
     }
 
     #[test]

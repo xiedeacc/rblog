@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260730-article-image-column-width" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260923-mpe-code" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -54,6 +54,13 @@
         {% endif %}
       </footer>
     </div>
+    <script type="module">
+      if (document.querySelector("pre.mermaid, pre[lang='mermaid'], pre > code.language-mermaid")) {
+        import("/admin/assets/mermaid-renderer.js?v=20260923-2").catch(function (error) {
+          console.error("Unable to load Mermaid renderer", error);
+        });
+      }
+    </script>
     <script>
       window.addEventListener("pageshow", function (event) {
         var nav = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];

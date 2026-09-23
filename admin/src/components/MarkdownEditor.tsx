@@ -20,10 +20,10 @@ import {
   AudioOutlined,
 } from "@ant-design/icons";
 import { marked } from "marked";
-import mermaid from "mermaid";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import { uploadAttachment } from "@/api/client";
+import { renderMermaid } from "@/lib/mermaid";
 
 interface Props {
   initialMarkdown: string;
@@ -202,12 +202,8 @@ export function MarkdownPreview({ markdown, className = "markdown-preview", prev
   const html = useMemo(() => renderMarkdownPreview(markdown), [markdown]);
 
   useEffect(() => {
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
-  }, []);
-
-  useEffect(() => {
     if (!activePreviewRef.current) return;
-    void mermaid.run({ nodes: activePreviewRef.current.querySelectorAll(".mermaid") });
+    void renderMermaid(activePreviewRef.current);
   }, [activePreviewRef, markdown]);
 
   return (

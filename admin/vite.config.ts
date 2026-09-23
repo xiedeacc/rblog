@@ -35,5 +35,17 @@ export default defineConfig({
     sourcemap: false,
     target: "es2022",
     chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      input: {
+        admin: path.resolve(__dirname, "index.html"),
+        "mermaid-renderer": path.resolve(__dirname, "src/mermaid-renderer.ts"),
+      },
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name === "mermaid-renderer"
+            ? "assets/mermaid-renderer.js"
+            : "assets/[name]-[hash].js",
+      },
+    },
   },
 });
