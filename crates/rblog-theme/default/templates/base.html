@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ site.title | default('rblog') }}{% endblock %}</title>
     {% if site.description %}<meta name="description" content="{{ site.description }}" />{% endif %}
-    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260923-markdown-table" />
+    <link rel="stylesheet" href="/themes/{{ active_theme }}/assets/style.css?v=20260923-toc" />
     <link rel="alternate" type="application/rss+xml" title="{{ site.title | default('rblog') }} feed" href="/feed.xml" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -54,6 +54,7 @@
         {% endif %}
       </footer>
     </div>
+    <script src="/themes/{{ active_theme }}/assets/toc.js?v=20260923-1" defer></script>
     <script type="module">
       if (document.querySelector("pre.mermaid, pre[lang='mermaid'], pre > code.language-mermaid")) {
         import("/admin/assets/mermaid-renderer.js?v=20260923-3").catch(function (error) {

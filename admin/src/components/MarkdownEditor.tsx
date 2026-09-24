@@ -239,6 +239,7 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [preview, setPreview] = useState(true);
   const [sidePanel, setSidePanel] = useState<"toc" | "detail">("toc");
+  const [activeHeadingId, setActiveHeadingId] = useState("");
   const markdownRef = useRef(initialMarkdown);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -417,7 +418,19 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
         delete element.dataset.sourceLine;
       }
     });
-  }, [markdown, sourceBlocks]);
+    const renderedHeadings = [
+      ...previewRef.current.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"),
+    ];
+    renderedHeadings.forEach((element, index) => {
+      const heading = headings[index];
+      if (!heading) return;
+      element.id = heading.id;
+      element.dataset.tocId = heading.id;
+    });
+    setActiveHeadingId((current) =>
+      headings.some((heading) => heading.id === current) ? current : (headings[0]?.id ?? ""),
+    );
+  }, [headings, markdown, sourceBlocks]);
 
   useLayoutEffect(() => {
     if (Date.now() >= editorInputGuardUntil.current) return;
@@ -513,6 +526,26 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
     return positions;
   };
 
+  const updateActiveHeading = (source: HTMLDivElement) => {
+    const renderedHeadings = [
+      ...source.querySelectorAll<HTMLElement>("[data-toc-id]"),
+    ];
+    const active =
+      [...renderedHeadings].reverse().find((heading) => heading.offsetTop <= source.scrollTop + 24) ??
+      renderedHeadings[0];
+    if (active?.dataset.tocId) setActiveHeadingId(active.dataset.tocId);
+  };
+
+  const scrollToHeading = (id: string) => {
+    const target = previewRef.current;
+    if (!target) return;
+    const heading = [...target.querySelectorAll<HTMLElement>("[data-toc-id]")]
+      .find((element) => element.dataset.tocId === id);
+    if (!heading) return;
+    setActiveHeadingId(id);
+    target.scrollTo({ top: Math.max(0, heading.offsetTop - 12), behavior: "smooth" });
+  };
+
   const syncFromEditor = (source: HTMLTextAreaElement) => {
     const target = previewRef.current;
     if (!target || scrollSyncSource.current || !sourceBlocks.length) return;
@@ -526,12 +559,14 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
     if (!targetBlock) return;
     scrollSyncSource.current = "editor";
     target.scrollTop = Math.max(0, targetBlock.offsetTop - 8);
+    updateActiveHeading(target);
     requestAnimationFrame(() => {
       scrollSyncSource.current = null;
     });
   };
 
   const syncFromPreview = (source: HTMLDivElement) => {
+    updateActiveHeading(source);
     if (!textarea.current || scrollSyncSource.current || !sourceBlocks.length) return;
     if (Date.now() < editorInputGuardUntil.current) return;
     const elements = [...source.querySelectorAll<HTMLElement>("[data-source-line]")];
@@ -658,7 +693,17 @@ export function MarkdownEditor({ initialMarkdown, onChange, stickyHeader }: Prop
                 {headings.length ? (
                   <ul className="markdown-inspector__toc">
                     {headings.map((heading, index) => (
-                      <li key={`${heading.id}-${index}`} className={`depth-${heading.depth}`}>{heading.title}</li>
+                      <li key={`${heading.id}-${index}`} className={`depth-${heading.depth}`}>
+                        <button
+                          type="button"
+                          className={activeHeadingId === heading.id ? "active" : ""}
+                          aria-current={activeHeadingId === heading.id ? "location" : undefined}
+                          onClick={() => scrollToHeading(heading.id)}
+                          title={heading.title}
+                        >
+                          {heading.title}
+                        </button>
+                      </li>
                     ))}
                   </ul>
                 ) : (

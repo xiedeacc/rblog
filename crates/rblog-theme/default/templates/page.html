@@ -1,8 +1,20 @@
 {% extends 'base.html' %}
 {% block title %}{{ page.title }} — {{ site.title | default('rblog') }}{% endblock %}
 {% block body %}
-  <article class="page">
-    <header><h1>{{ page.title }}</h1></header>
-    <div class="page-content">{{ page.content | safe }}</div>
-  </article>
+  <div class="article-layout article-layout--page">
+    <div class="article-layout__main">
+      <article class="page">
+        <header><h1>{{ page.title }}</h1></header>
+        <div class="page-content" data-article-body>{{ page.content | safe }}</div>
+      </article>
+    </div>
+    <aside class="article-toc" data-article-toc hidden>
+      <nav class="article-toc__panel" aria-label="页面目录">
+        <strong class="article-toc__title">目录</strong>
+        <div class="article-toc__scroll" data-article-toc-scroll>
+          <ol class="article-toc__list" data-article-toc-list></ol>
+        </div>
+      </nav>
+    </aside>
+  </div>
 {% endblock %}
