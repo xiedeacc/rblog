@@ -8,6 +8,10 @@ function initializeMermaid() {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
+    // HTML labels are rendered as SVG foreignObject nodes. Browsers mark a
+    // canvas that draws such an SVG as origin-tainted, so it cannot be copied
+    // or exported as PNG. Native SVG labels keep diagrams exportable.
+    htmlLabels: false,
   });
   initialized = true;
 }

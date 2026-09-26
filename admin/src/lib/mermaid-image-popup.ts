@@ -114,6 +114,54 @@ function svgDimensions(svg: SVGSVGElement): { width: number; height: number } {
   return { width, height };
 }
 
+function foreignObjectText(node: SVGForeignObjectElement): string[] {
+  const content = node.cloneNode(true) as SVGForeignObjectElement;
+  content.querySelectorAll("br").forEach((breakElement) => {
+    breakElement.replaceWith(document.createTextNode("\n"));
+  });
+  return (content.textContent ?? "")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+/**
+ * Mermaid directives in older posts can opt back into HTML labels even when
+ * the global renderer uses native SVG labels. Replace those foreignObject
+ * nodes before rasterization so the canvas remains exportable.
+ */
+function replaceForeignObjects(svg: SVGSVGElement) {
+  const namespace = "http://www.w3.org/2000/svg";
+  svg.querySelectorAll<SVGForeignObjectElement>("foreignObject").forEach((node) => {
+    const lines = foreignObjectText(node);
+    const x = Number.parseFloat(node.getAttribute("x") ?? "0") || 0;
+    const y = Number.parseFloat(node.getAttribute("y") ?? "0") || 0;
+    const width = Number.parseFloat(node.getAttribute("width") ?? "0") || 0;
+    const height = Number.parseFloat(node.getAttribute("height") ?? "0") || 0;
+    const text = document.createElementNS(namespace, "text");
+    text.setAttribute("x", String(x + width / 2));
+    text.setAttribute("y", String(y + height / 2));
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("dominant-baseline", "middle");
+    text.setAttribute("font-family", "Arial, sans-serif");
+    text.setAttribute("font-size", "14");
+    text.setAttribute("fill", "#333");
+
+    if (lines.length <= 1) {
+      text.textContent = lines[0] ?? "";
+    } else {
+      lines.forEach((line, index) => {
+        const span = document.createElementNS(namespace, "tspan");
+        span.setAttribute("x", String(x + width / 2));
+        span.setAttribute("dy", index === 0 ? `${-(lines.length - 1) * 0.6}em` : "1.2em");
+        span.textContent = line;
+        text.append(span);
+      });
+    }
+    node.replaceWith(text);
+  });
+}
+
 async function svgToPng(svg: SVGSVGElement): Promise<GeneratedPng> {
   const { width, height } = svgDimensions(svg);
   const requestedScale = Math.max(3, window.devicePixelRatio || 1);
@@ -125,6 +173,7 @@ async function svgToPng(svg: SVGSVGElement): Promise<GeneratedPng> {
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
+  replaceForeignObjects(clone);
 
   const source = new XMLSerializer().serializeToString(clone);
   const sourceUrl = URL.createObjectURL(
